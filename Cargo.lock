@@ -939,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "lightshadedb"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "lightshadedb-codegen",
  "lightshadedb-macros",
@@ -953,14 +953,14 @@ dependencies = [
 
 [[package]]
 name = "lightshadedb-codegen"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "toml",
 ]
 
 [[package]]
 name = "lightshadedb-macros"
-version = "2.1.0"
+version = "2.1.1"
 dependencies = [
  "lightshadedb-codegen",
  "proc-macro2",
