@@ -1,9 +1,3 @@
-# Benchmark workload: a single primary-key table with no secondary indexes.
-#
-# Point lookups, ordered primary-key scans, and point updates exercise the
-# shape redb is designed for: one ordered key-value tree and no maintained
-# counters or secondary indexes.
-
 table kv {
     id: i64 primary_key
     value: text

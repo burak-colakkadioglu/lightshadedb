@@ -1,5 +1,3 @@
-# Projection, aggregation, grouping, and inner-join example.
-
 table inboxes {
     id: i64 primary_key
     owner: text

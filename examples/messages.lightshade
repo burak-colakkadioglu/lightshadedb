@@ -1,8 +1,3 @@
-# Milestone 0 workload: a typed message store.
-#
-# The interpreter executes this generically. The compiler specializes it into
-# typed rows, an ordered lookup index, and a maintained unread counter.
-
 table messages {
     id: i64 primary_key
     inbox_id: i64

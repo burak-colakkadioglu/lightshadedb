@@ -1,8 +1,3 @@
-# Suite workload: append-heavy tenant events with two access paths and purges.
-#
-# The compiler maintains an index for each ordered query, a tenant counter, and
-# removes rows from every maintained structure when a purge deletes by PK.
-
 table events {
     id: i64 primary_key
     tenant: i64

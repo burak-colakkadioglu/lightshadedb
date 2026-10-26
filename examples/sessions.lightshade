@@ -1,9 +1,3 @@
-# Suite workload: session point lookups, touches, expirations, and active counts.
-#
-# This workload has no ordered scans. It is the counter/point-update counterpart
-# to `events`: most of the win should come from maintained state and cheap
-# primary-key mutations.
-
 table sessions {
     id: i64 primary_key
     user: i64

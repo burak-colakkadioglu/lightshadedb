@@ -1,8 +1,3 @@
-# Suite workload: text-keyed products with category and price access paths.
-#
-# Exercises text primary keys, compound ordered indexes, equality counters,
-# price updates, and text-keyed deletes.
-
 table products {
     sku: text primary_key
     category: i64
