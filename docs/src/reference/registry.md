@@ -39,7 +39,7 @@ surprise); embedded and client entries hold the schema's `App`.
 ## The macro
 
 ```rust
-lightshade::registry!("lightshade.toml");
+lightshadedb::registry!("lightshade.toml");
 ```
 
 You get a `Databases` struct with one typed field per id, `IDS` in

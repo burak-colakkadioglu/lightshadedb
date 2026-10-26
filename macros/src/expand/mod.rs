@@ -17,8 +17,8 @@ use server::server_wrapper;
 use table::{projection_select, table_items};
 
 use crate::lower::LoweredSchema;
-use crate::model::{strip_lightshade_attrs, Schema};
-use lightshade_codegen::compiler::{
+use crate::model::{strip_lightshadedb_attrs, Schema};
+use lightshadedb_codegen::compiler::{
     generate_library_with, GenerateOptions, MigrationField, MigrationTable,
 };
 use proc_macro2::TokenStream;
@@ -104,19 +104,19 @@ pub fn expand(schema: Schema) -> syn::Result<TokenStream> {
     .map_err(|error| {
         syn::Error::new(
             proc_macro2::Span::call_site(),
-            format!("Lightshade code generation failed: {error}"),
+            format!("Lightshade DB code generation failed: {error}"),
         )
     })?;
     let engine = TokenStream::from_str(&source).map_err(|error| {
         syn::Error::new(
             proc_macro2::Span::call_site(),
-            format!("Lightshade generated invalid Rust: {error}"),
+            format!("Lightshade DB generated invalid Rust: {error}"),
         )
     })?;
 
     let mut module = schema.module.clone();
     transform_items(&mut module, &schema);
-    let fingerprint = lightshade_codegen::compiler::workload_fingerprint(&lowered.workload);
+    let fingerprint = lightshadedb_codegen::compiler::workload_fingerprint(&lowered.workload);
     let generated = expand_items(&schema, &lowered, engine, fingerprint);
     let content = module
         .content
@@ -154,9 +154,9 @@ fn transform_items(module: &mut syn::ItemMod, schema: &Schema) {
     for item in items {
         match item {
             Item::Struct(item) if table_idents.contains(&item.ident.to_string()) => {
-                strip_lightshade_attrs(&mut item.attrs);
+                strip_lightshadedb_attrs(&mut item.attrs);
                 for field in &mut item.fields {
-                    strip_lightshade_attrs(&mut field.attrs);
+                    strip_lightshadedb_attrs(&mut field.attrs);
                 }
                 crate::model::ensure_derives(item);
             }
@@ -168,7 +168,7 @@ fn transform_items(module: &mut syn::ItemMod, schema: &Schema) {
             {
                 for member in &mut item.items {
                     if let syn::TraitItem::Fn(method) = member {
-                        strip_lightshade_attrs(&mut method.attrs);
+                        strip_lightshadedb_attrs(&mut method.attrs);
                     }
                 }
             }
@@ -205,31 +205,31 @@ fn expand_items(
     output.extend(quote! {
         #[cfg(not(any(feature = "embedded", feature = "client")))]
         const _: () = compile_error!(
-            "Lightshade needs the `embedded` or `client` Cargo feature; forward one from your application crate"
+            "Lightshade DB needs the `embedded` or `client` Cargo feature; forward one from your application crate"
         );
 
         #[cfg(feature = "embedded")]
         #[doc(hidden)]
-        pub mod __lightshade {
+        pub mod __lightshadedb {
             #engine
         }
 
         #[cfg(feature = "embedded")]
         #[doc(hidden)]
-        fn __ls_public<T>(result: ::std::io::Result<T>) -> ::lightshade::Result<T> {
+        fn __ls_public<T>(result: ::std::io::Result<T>) -> ::lightshadedb::Result<T> {
             result.map_err(__ls_map_io)
         }
 
         #[cfg(feature = "embedded")]
         #[doc(hidden)]
-        fn __ls_map_io(error: ::std::io::Error) -> ::lightshade::Error {
+        fn __ls_map_io(error: ::std::io::Error) -> ::lightshadedb::Error {
             use ::std::io::ErrorKind;
             let message = error.to_string();
             if message.contains("snapshot schema mismatch")
                 || message.contains("snapshot workload mismatch")
             {
-                return ::lightshade::Error::Migration(
-                    ::lightshade::MigrationError::Required {
+                return ::lightshadedb::Error::Migration(
+                    ::lightshadedb::MigrationError::Required {
                         destructive: false,
                         additions: 0,
                         removals: 0,
@@ -238,17 +238,17 @@ fn expand_items(
             }
             match error.kind() {
                 ErrorKind::PermissionDenied if message.contains("read-only") => {
-                    ::lightshade::Error::ReadOnly
+                    ::lightshadedb::Error::ReadOnly
                 }
-                ErrorKind::WouldBlock => ::lightshade::Error::Locked {
+                ErrorKind::WouldBlock => ::lightshadedb::Error::Locked {
                     path: ::std::path::PathBuf::new(),
                 },
-                ErrorKind::NotFound => ::lightshade::Error::io("opening database", error),
-                ErrorKind::InvalidInput => ::lightshade::Error::InvalidArgument {
+                ErrorKind::NotFound => ::lightshadedb::Error::io("opening database", error),
+                ErrorKind::InvalidInput => ::lightshadedb::Error::InvalidArgument {
                     name: "database".to_string(),
                     reason: message,
                 },
-                _ => ::lightshade::Error::io("database operation", error),
+                _ => ::lightshadedb::Error::io("database operation", error),
             }
         }
     });

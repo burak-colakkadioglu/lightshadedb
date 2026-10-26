@@ -1,8 +1,8 @@
 #![cfg(all(feature = "host", feature = "client"))]
 
-use lightshade::prelude::*;
-use lightshade::secret::{Credential, Role};
-use lightshade::{ClientOptions, Credentials, CredentialsSource, ServeOptions};
+use lightshadedb::prelude::*;
+use lightshadedb::secret::{Credential, Role};
+use lightshadedb::{ClientOptions, Credentials, CredentialsSource, ServeOptions};
 use rust_messages::store::{self, Db, Inbox, Message};
 
 fn credentials() -> Credentials {
@@ -16,7 +16,7 @@ fn credentials() -> Credentials {
 }
 
 fn options() -> ClientOptions {
-    ClientOptions::new(lightshade::ClientCredentials::new(
+    ClientOptions::new(lightshadedb::ClientCredentials::new(
         "tester",
         "correct horse battery staple",
     ))
@@ -162,7 +162,7 @@ fn reading_role_cannot_write() {
     .unwrap();
     let mut client = store::Client::connect(
         server.endpoint(),
-        ClientOptions::new(lightshade::ClientCredentials::new("reader", "read only")),
+        ClientOptions::new(lightshadedb::ClientCredentials::new("reader", "read only")),
     )
     .unwrap();
     assert_eq!(client.unread_count(7).unwrap(), 2);
@@ -184,7 +184,7 @@ fn bad_credentials_are_rejected() {
     .unwrap();
     let error = match store::Client::connect(
         server.endpoint(),
-        ClientOptions::new(lightshade::ClientCredentials::new("tester", "wrong")),
+        ClientOptions::new(lightshadedb::ClientCredentials::new("tester", "wrong")),
     ) {
         Ok(_) => panic!("bad credentials were accepted"),
         Err(error) => error,
@@ -228,7 +228,7 @@ fn tcp_hostname_endpoint_round_trip() {
     let server = store::Server::start(db, options).unwrap();
     let addr = server.local_addr().expect("bound TCP address");
     let endpoint =
-        lightshade::ClientEndpoint::parse(&format!("tcp://localhost:{}", addr.port())).unwrap();
+        lightshadedb::ClientEndpoint::parse(&format!("tcp://localhost:{}", addr.port())).unwrap();
     let mut client = store::Client::connect_endpoint(endpoint, self::options()).unwrap();
     assert_eq!(
         client.remote_addr().map(|peer| peer.port()),
@@ -392,7 +392,7 @@ fn unknown_databases_are_rejected_without_an_oracle() {
     let bad = match store::Client::connect_tcp_db(
         addr,
         "a1",
-        ClientOptions::new(lightshade::ClientCredentials::new("tester", "wrong")),
+        ClientOptions::new(lightshadedb::ClientCredentials::new("tester", "wrong")),
     ) {
         Ok(_) => panic!("bad credentials were accepted"),
         Err(error) => error,
@@ -432,8 +432,8 @@ fn per_database_credentials_are_enforced() {
     .unwrap();
     let addr = server.local_addr().expect("bound TCP address");
 
-    let aaa = || ClientOptions::new(lightshade::ClientCredentials::new("tester", "aaa"));
-    let bbb = || ClientOptions::new(lightshade::ClientCredentials::new("tester", "bbb"));
+    let aaa = || ClientOptions::new(lightshadedb::ClientCredentials::new("tester", "aaa"));
+    let bbb = || ClientOptions::new(lightshadedb::ClientCredentials::new("tester", "bbb"));
     assert!(matches!(
         store::Client::connect_tcp_db(addr, "a1", aaa()),
         Ok(_)

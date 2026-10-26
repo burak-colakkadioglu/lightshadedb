@@ -1,23 +1,23 @@
 # Schema macro
 
-One `#[lightshade::schema]` module declares tables, projections, and
-*up to* one `#[lightshade::operations]` trait. A second operations
+One `#[lightshadedb::schema]` module declares tables, projections, and
+*up to* one `#[lightshadedb::operations]` trait. A second operations
 trait is a compile error; zero is fine (you get storage and CRUD with
 no declared queries). The macro generates field handles, patch types,
 row codecs, indexes, and the `Backend`, `App`, `Client`, `Server`,
 and pool handles.
 
 ```rust
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Inbox { /* ... */ }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct UnreadDigest { /* projection: never stored */ }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Messages { /* ... */ }
 }
 ```
@@ -30,7 +30,7 @@ needed.
 
 The compiler enforces these and names the offender every time:
 
-- Exactly one `#[lightshade(primary_key)]` per stored table. Zero or
+- Exactly one `#[lightshadedb(primary_key)]` per stored table. Zero or
   two fails; the diagnostic names the table.
 - No nullable primary key. No nested `Option<Option<T>>`.
 - New non-nullable fields need defaults at migration time.
@@ -56,21 +56,21 @@ Nullability comes from columns and is tested with `is_null()` /
 ## Operations
 
 ```rust
-#[lightshade::operations]
+#[lightshadedb::operations]
 pub trait Messages {
-    #[lightshade::query(filter = ..., order = ..., limit = ..., offset = ...)]
+    #[lightshadedb::query(filter = ..., order = ..., limit = ..., offset = ...)]
     fn page(&self, ...) -> Result<Vec<Row>>;
 
-    #[lightshade::query(count, filter = ...)]
+    #[lightshadedb::query(count, filter = ...)]
     fn how_many(&self, ...) -> Result<i64>;
 
-    #[lightshade::query(from = T, select = ..., joins = ..., group_by = ...)]
+    #[lightshadedb::query(from = T, select = ..., joins = ..., group_by = ...)]
     fn report(&self, ...) -> Result<Vec<Projection>>;
 
-    #[lightshade::update(filter = ..., set = (T::f.set(v),))]
+    #[lightshadedb::update(filter = ..., set = (T::f.set(v),))]
     fn fix(&mut self, ...) -> Result<u64>;
 
-    #[lightshade::delete(filter = ...)]
+    #[lightshadedb::delete(filter = ...)]
     fn purge(&mut self, ...) -> Result<u64>;
 }
 ```
@@ -96,7 +96,7 @@ For a module `store`:
   types (one `Option` field per column, `Default`).
 - Typed field handles: `Message::id`, `Message::id.eq(...)`, ordering,
   grouping, and select builders.
-- `store::Backend`: the `lightshade::Backend` implementation shared by
+- `store::Backend`: the `lightshadedb::Backend` implementation shared by
   every handle.
 - `store::App` + `AppConfig`: `AppConfig::embedded(path)` takes only
   a path (options come from `OpenOptions` at open time);

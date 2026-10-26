@@ -10,7 +10,7 @@ The generated `Server` binds a `Listen` endpoint. Loopback-only is
 the default posture; anything wider is explicit:
 
 ```rust
-let listen = lightshade::Listen::tcp_local(7171);
+let listen = lightshadedb::Listen::tcp_local(7171);
 ```
 
 `tcp_local` binds loopback with a loopback-only policy.
@@ -20,7 +20,7 @@ are allowed under `LocalNetwork` and refused under `Local`. For
 anything escort-worthy, parse and constrain:
 
 ```rust
-let listen = lightshade::Listen::parse_tcp("tcp://0.0.0.0:7171", lightshade::NetworkAccess::External)?
+let listen = lightshadedb::Listen::parse_tcp("tcp://0.0.0.0:7171", lightshadedb::NetworkAccess::External)?
     .with_allowlist(&["10.0.7.0/24"])?;
 ```
 
@@ -53,10 +53,10 @@ interior `RefCell`, configured with `ClientOptions` (credentials,
 async tasks, reach for the pool:
 
 ```rust
-let pool = lightshade::Pool::new(
-    lightshade::ClientEndpoint::parse("tcp://db.internal:7171/orders")?,
+let pool = lightshadedb::Pool::new(
+    lightshadedb::ClientEndpoint::parse("tcp://db.internal:7171/orders")?,
     workload_fingerprint,
-    lightshade::PoolOptions::new(creds),
+    lightshadedb::PoolOptions::new(creds),
 ).await?;
 ```
 

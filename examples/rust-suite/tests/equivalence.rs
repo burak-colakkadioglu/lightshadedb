@@ -1,8 +1,8 @@
-use lightshade::prelude::*;
-use lightshade::table::Value as NewValue;
-use lightshade_codegen::ir::Value as OldValue;
-use lightshade_codegen::ir::{parse_workload, validate};
-use lightshade_codegen::runtime::{Database, OpResult};
+use lightshadedb::prelude::*;
+use lightshadedb::table::Value as NewValue;
+use lightshadedb_codegen::ir::Value as OldValue;
+use lightshadedb_codegen::ir::{parse_workload, validate};
+use lightshadedb_codegen::runtime::{Database, OpResult};
 use rust_suite::{
     catalog::{self, Product},
     events::{self, Event},

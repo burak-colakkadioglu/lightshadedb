@@ -2,12 +2,12 @@
 
 use self::nullable_store::{Db, Note, NotePatch};
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod nullable_store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub title: String,
         pub score: Option<i64>,
@@ -16,45 +16,45 @@ pub mod nullable_store {
         pub pinned: Option<bool>,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct TagCount {
         pub tag: Option<String>,
         pub total: i64,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct ScoreStats {
         pub total: i64,
         pub sum: i64,
         pub lowest: i64,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait NoteOps {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Note::score.eq(Some(score)),
             order = (Note::id.asc()),
         )]
         fn by_score(&self, score: i64) -> Result<Vec<Note>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Note::score.is_null(),
             order = (Note::id.asc()),
         )]
         fn null_scores(&self) -> Result<Vec<Note>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Note::tag.is_not_null(),
             order = (Note::id.asc()),
         )]
         fn tagged(&self) -> Result<Vec<Note>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             order = (Note::score.asc(), Note::id.asc()),
         )]
         fn ordered(&self) -> Result<Vec<Note>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Note,
             select = TagCount::select()
                 .tag(Note::tag.select())
@@ -64,7 +64,7 @@ pub mod nullable_store {
         )]
         fn count_by_tag(&self) -> Result<Vec<TagCount>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Note,
             select = ScoreStats::select()
                 .total(count())
@@ -73,7 +73,7 @@ pub mod nullable_store {
         )]
         fn score_stats(&self) -> Result<Vec<ScoreStats>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Note,
             select = ScoreStats::select()
                 .total(count())
@@ -83,28 +83,28 @@ pub mod nullable_store {
         )]
         fn present_score_stats(&self) -> Result<Vec<ScoreStats>>;
 
-        #[lightshade::query(count, filter = Note::score.is_null())]
+        #[lightshadedb::query(count, filter = Note::score.is_null())]
         fn null_count(&self) -> Result<i64>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Note::id.eq(id),
             set = (Note::score.set(Some(score)),),
         )]
         fn set_score(&mut self, id: i64, score: i64) -> Result<u64>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Note::id.eq(id),
             set = (Note::score.set(None),),
         )]
         fn clear_score(&mut self, id: i64) -> Result<u64>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Note::score.lt(Some(cutoff)),
             set = (Note::pinned.set(true),),
         )]
         fn pin_low_scores(&mut self, cutoff: i64) -> Result<u64>;
 
-        #[lightshade::delete(filter = Note::tag.is_null())]
+        #[lightshadedb::delete(filter = Note::tag.is_null())]
         fn delete_untagged(&mut self) -> Result<u64>;
     }
 }
@@ -271,21 +271,21 @@ fn updates_and_deletes_filter_on_nulls() {
 #[cfg(all(feature = "embedded", feature = "host", feature = "client"))]
 #[test]
 fn nulls_round_trip_over_the_wire() {
-    use lightshade::secret::{Credential, Role};
-    use lightshade::{ClientOptions, Credentials, CredentialsSource, ServeOptions};
+    use lightshadedb::secret::{Credential, Role};
+    use lightshadedb::{ClientOptions, Credentials, CredentialsSource, ServeOptions};
 
     fn credentials() -> Credentials {
         let mut credentials = Credentials::new();
         credentials.insert(Credential {
             id: "tester".into(),
-            secret: lightshade::Secret::new("correct-horse-battery-staple"),
+            secret: lightshadedb::Secret::new("correct-horse-battery-staple"),
             role: Role::Writer,
         });
         credentials
     }
 
     fn options() -> ClientOptions {
-        ClientOptions::new(lightshade::ClientCredentials::new(
+        ClientOptions::new(lightshadedb::ClientCredentials::new(
             "tester",
             "correct-horse-battery-staple",
         ))
@@ -300,7 +300,7 @@ fn nulls_round_trip_over_the_wire() {
 
     let db = Db::open(&path).unwrap();
     let mut serve = ServeOptions::new(CredentialsSource::Static(credentials()));
-    serve.listen = lightshade::Listen::tcp_local(0);
+    serve.listen = lightshadedb::Listen::tcp_local(0);
     let server = nullable_store::Server::start(db, serve).unwrap();
     let addr = server.local_addr().expect("bound TCP address");
 
@@ -373,10 +373,10 @@ fn nullable_field_migrates_without_a_default() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("notes.lsdb");
 
-    #[lightshade::schema]
+    #[lightshadedb::schema]
     pub mod before {
         pub struct Note {
-            #[lightshade(primary_key)]
+            #[lightshadedb(primary_key)]
             pub id: i64,
             pub title: String,
         }

@@ -1,4 +1,4 @@
-use lightshade_codegen::ir::Ty;
+use lightshadedb_codegen::ir::Ty;
 use proc_macro2::Span;
 use syn::spanned::Spanned;
 use syn::{
@@ -173,19 +173,19 @@ fn parse_struct(item: &ItemStruct) -> syn::Result<Option<ParsedStruct>> {
     let Fields::Named(named) = &item.fields else {
         return Err(syn::Error::new(
             item.fields.span(),
-            "Lightshade structs must have named fields",
+            "Lightshade DB structs must have named fields",
         ));
     };
     if !matches!(item.vis, Visibility::Public(_)) {
         return Err(syn::Error::new(
             item.vis.span(),
-            "Lightshade table and projection structs must be `pub`",
+            "Lightshade DB table and projection structs must be `pub`",
         ));
     }
     if !item.generics.params.is_empty() {
         return Err(syn::Error::new(
             item.generics.span(),
-            "Lightshade structs cannot have generics or lifetimes",
+            "Lightshade DB structs cannot have generics or lifetimes",
         ));
     }
 
@@ -194,7 +194,7 @@ fn parse_struct(item: &ItemStruct) -> syn::Result<Option<ParsedStruct>> {
         if !matches!(field.vis, Visibility::Public(_)) {
             return Err(syn::Error::new(
                 field.vis.span(),
-                "Lightshade fields must be `pub`",
+                "Lightshade DB fields must be `pub`",
             ));
         }
         let ident = field
@@ -205,7 +205,7 @@ fn parse_struct(item: &ItemStruct) -> syn::Result<Option<ParsedStruct>> {
             syn::Error::new(
                 field.ty.span(),
                 format!(
-                    "unsupported Lightshade field type for `{ident}`; use integers, floats, bool, String, Vec<u8>, [u8; 16], or Option<T> of those",
+                    "unsupported Lightshade DB field type for `{ident}`; use integers, floats, bool, String, Vec<u8>, [u8; 16], or Option<T> of those",
                 ),
             )
         })?;
@@ -243,7 +243,7 @@ fn parse_struct(item: &ItemStruct) -> syn::Result<Option<ParsedStruct>> {
         return Err(syn::Error::new(
             item.ident.span(),
             format!(
-                "table `{}` must have exactly one `#[lightshade(primary_key)]` field",
+                "table `{}` must have exactly one `#[lightshadedb(primary_key)]` field",
                 item.ident
             ),
         ));
@@ -290,7 +290,7 @@ fn field_attrs(field: &Field) -> syn::Result<FieldAttrs> {
     if let Some(attr) = field
         .attrs
         .iter()
-        .find(|attr| attr.path().is_ident("lightshade"))
+        .find(|attr| attr.path().is_ident("lightshadedb"))
     {
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("primary_key") {
@@ -343,7 +343,7 @@ fn struct_attrs(attrs: &[Attribute]) -> syn::Result<StructAttrs> {
         rename_from: None,
     };
     for attr in attrs {
-        if !attr.path().is_ident("lightshade") {
+        if !attr.path().is_ident("lightshadedb") {
             continue;
         }
         attr.parse_nested_meta(|meta| {
@@ -471,7 +471,7 @@ fn parse_operations(item: &ItemTrait) -> syn::Result<OperationTrait> {
         let Some(attr) = method.attrs.iter().find(|attr| is_operation_attr(attr)) else {
             return Err(syn::Error::new(
                 method.span(),
-                "every method in an operations trait needs a `#[lightshade::query]`, `#[lightshade::update]`, or `#[lightshade::delete]` attribute",
+                "every method in an operations trait needs a `#[lightshadedb::query]`, `#[lightshadedb::update]`, or `#[lightshadedb::delete]` attribute",
             ));
         };
         methods.push(parse_operation(method, attr)?);
@@ -706,13 +706,13 @@ fn validate_return_type(output: &syn::ReturnType, kind: &OperationKind) -> syn::
     let syn::ReturnType::Type(_, ty) = output else {
         return Err(syn::Error::new(
             output.span(),
-            "operations must return `lightshade::Result<...>`",
+            "operations must return `lightshadedb::Result<...>`",
         ));
     };
     let Type::Path(path) = ty.as_ref() else {
         return Err(syn::Error::new(
             ty.span(),
-            "expected `lightshade::Result<T>`",
+            "expected `lightshadedb::Result<T>`",
         ));
     };
     let segment = path
@@ -723,7 +723,7 @@ fn validate_return_type(output: &syn::ReturnType, kind: &OperationKind) -> syn::
     if segment.ident != "Result" {
         return Err(syn::Error::new(
             ty.span(),
-            "expected `lightshade::Result<T>`",
+            "expected `lightshadedb::Result<T>`",
         ));
     }
     let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
@@ -838,7 +838,7 @@ fn validate_reserved_table_name(ident: &Ident) -> syn::Result<()> {
     if RESERVED.contains(&ident.to_string().as_str()) {
         return Err(syn::Error::new(
             ident.span(),
-            format!("`{ident}` is reserved by Lightshade"),
+            format!("`{ident}` is reserved by Lightshade DB"),
         ));
     }
     Ok(())
@@ -868,9 +868,9 @@ fn combine(errors: &mut Option<syn::Error>, error: syn::Error) {
     }
 }
 
-pub fn strip_lightshade_attrs(attrs: &mut Vec<Attribute>) {
+pub fn strip_lightshadedb_attrs(attrs: &mut Vec<Attribute>) {
     attrs.retain(|attr| {
-        !attr.path().is_ident("lightshade")
+        !attr.path().is_ident("lightshadedb")
             && !attr.path().segments.last().is_some_and(|segment| {
                 matches!(
                     segment.ident.to_string().as_str(),
@@ -930,8 +930,8 @@ pub fn field_path(expr: &Expr) -> Option<(Ident, Ident)> {
     Some((first.ident.clone(), second.ident.clone()))
 }
 
-pub fn literal_for_ty(lit: &Lit, ty: Ty) -> Option<lightshade_codegen::ir::Value> {
-    use lightshade_codegen::ir::Value;
+pub fn literal_for_ty(lit: &Lit, ty: Ty) -> Option<lightshadedb_codegen::ir::Value> {
+    use lightshadedb_codegen::ir::Value;
     Some(match (ty, lit) {
         (Ty::I8, Lit::Int(value)) => Value::I8(value.base10_parse().ok()?),
         (Ty::I16, Lit::Int(value)) => Value::I16(value.base10_parse().ok()?),

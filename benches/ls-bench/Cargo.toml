@@ -6,17 +6,17 @@ publish = false
 
 [features]
 default = ["host", "client"]
-host = ["embedded", "lightshade/host"]
-client = ["lightshade/client"]
+host = ["embedded", "lightshadedb/host"]
+client = ["lightshadedb/client"]
 embedded = []
-async = ["lightshade/async"]
+async = ["lightshadedb/async"]
 
 [[bin]]
 name = "ls-bench"
 path = "src/main.rs"
 
 [dependencies]
-lightshade = { path = "../.." }
+lightshadedb = { path = "../.." }
 postgres = "0.19"
 postgresql_embedded = { version = "0.22", features = ["blocking", "tokio"] }
 redb = "3"

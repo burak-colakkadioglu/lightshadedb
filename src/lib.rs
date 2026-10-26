@@ -25,7 +25,7 @@ pub use error::{
     AuthError, Corruption, Error, ErrorCode, ErrorKind, MigrationError, QuotaKind, RemoteDetail,
     RemoteError, Result, SchemaError,
 };
-pub use lightshade_macros::{operations, registry, schema};
+pub use lightshadedb_macros::{operations, registry, schema};
 pub use migration::{
     FieldSummary, MigrationOptions, MigrationPlan, MigrationReport, MigrationStep, SchemaSummary,
     TableSummary,

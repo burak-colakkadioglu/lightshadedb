@@ -13,12 +13,12 @@ members = [
 version = "2.0.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://example.invalid/lightshade"
+repository = "https://github.com/burak-colakkadioglu/lightshadedb"
 
 [workspace.dependencies]
-lightshade = { path = "." }
-lightshade-codegen = { path = "codegen" }
-lightshade-macros = { path = "macros" }
+lightshadedb = { path = ".", version = "2.0.0" }
+lightshadedb-codegen = { path = "codegen", version = "2.0.0" }
+lightshadedb-macros = { path = "macros", version = "2.0.0" }
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
 syn = { version = "2.0.119", features = ["full", "extra-traits"] }
@@ -31,10 +31,12 @@ trybuild = "1"
 toml = "1"
 
 [package]
-name = "lightshade"
+name = "lightshadedb"
 version.workspace = true
 edition.workspace = true
-description = "Lightshade Database Software: Rust-native schema, specialized queries, embedded and connected deployment."
+license.workspace = true
+repository.workspace = true
+description = "Lightshade DB: Rust-native schema, specialized queries, embedded and connected deployment."
 
 [lib]
 path = "src/lib.rs"
@@ -44,12 +46,12 @@ name = "lightshade"
 path = "src/bin/lightshade/main.rs"
 
 [dependencies]
-lightshade-macros = { workspace = true }
+lightshadedb-macros = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
 subtle = { workspace = true }
 zeroize = { workspace = true }
-lightshade-codegen = { workspace = true }
+lightshadedb-codegen = { workspace = true }
 tokio = { version = "1", optional = true, features = ["net", "time", "sync", "fs", "io-util"] }
 
 [features]

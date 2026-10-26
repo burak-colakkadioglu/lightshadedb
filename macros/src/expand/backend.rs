@@ -15,41 +15,41 @@ pub(crate) fn backend_impl_for(schema: &Schema, lowered: &LoweredSchema) -> Toke
                 let call = match method {
                     "insert" => quote! {
                         {
-                            let row = <#ident as ::lightshade::Table>::from_values(values)?;
-                            <#ident as ::lightshade::table::TableOps<Db>>::insert(self, row)
+                            let row = <#ident as ::lightshadedb::Table>::from_values(values)?;
+                            <#ident as ::lightshadedb::table::TableOps<Db>>::insert(self, row)
                         }
                     },
                     "insert_many" => quote! {
                         {
                             let rows = rows
                                 .into_iter()
-                                .map(<#ident as ::lightshade::Table>::from_values)
-                                .collect::<::lightshade::Result<::std::vec::Vec<_>>>()?;
-                            <#ident as ::lightshade::table::TableOps<Db>>::insert_many(self, rows)
+                                .map(<#ident as ::lightshadedb::Table>::from_values)
+                                .collect::<::lightshadedb::Result<::std::vec::Vec<_>>>()?;
+                            <#ident as ::lightshadedb::table::TableOps<Db>>::insert_many(self, rows)
                         }
                     },
                     "upsert" => quote! {
                         {
-                            let row = <#ident as ::lightshade::Table>::from_values(values)?;
-                            <#ident as ::lightshade::table::TableOps<Db>>::upsert(self, row)
+                            let row = <#ident as ::lightshadedb::Table>::from_values(values)?;
+                            <#ident as ::lightshadedb::table::TableOps<Db>>::upsert(self, row)
                         }
                     },
                     "upsert_many" => quote! {
                         {
                             let rows = rows
                                 .into_iter()
-                                .map(<#ident as ::lightshade::Table>::from_values)
-                                .collect::<::lightshade::Result<::std::vec::Vec<_>>>()?;
-                            <#ident as ::lightshade::table::TableOps<Db>>::upsert_many(self, rows)
+                                .map(<#ident as ::lightshadedb::Table>::from_values)
+                                .collect::<::lightshadedb::Result<::std::vec::Vec<_>>>()?;
+                            <#ident as ::lightshadedb::table::TableOps<Db>>::upsert_many(self, rows)
                         }
                     },
                     "get" => quote! {
                         {
-                            let key = <#ident as ::lightshade::Table>::key_from_value(key)?;
-                            match <#ident as ::lightshade::table::TableOps<Db>>::get(self, key)? {
+                            let key = <#ident as ::lightshadedb::Table>::key_from_value(key)?;
+                            match <#ident as ::lightshadedb::table::TableOps<Db>>::get(self, key)? {
                                 ::std::option::Option::Some(row) => {
                                     ::std::result::Result::Ok(::std::option::Option::Some(
-                                        <#ident as ::lightshade::Table>::to_values(&row),
+                                        <#ident as ::lightshadedb::Table>::to_values(&row),
                                     ))
                                 }
                                 ::std::option::Option::None => ::std::result::Result::Ok(::std::option::Option::None),
@@ -58,29 +58,29 @@ pub(crate) fn backend_impl_for(schema: &Schema, lowered: &LoweredSchema) -> Toke
                     },
                     "contains" => quote! {
                         {
-                            let key = <#ident as ::lightshade::Table>::key_from_value(key)?;
-                            <#ident as ::lightshade::table::TableOps<Db>>::contains(self, &key)
+                            let key = <#ident as ::lightshadedb::Table>::key_from_value(key)?;
+                            <#ident as ::lightshadedb::table::TableOps<Db>>::contains(self, &key)
                         }
                     },
                     "update" => quote! {
                         {
-                            let row = <#ident as ::lightshade::Table>::from_values(values)?;
-                            <#ident as ::lightshade::table::TableOps<Db>>::update(self, row)
+                            let row = <#ident as ::lightshadedb::Table>::from_values(values)?;
+                            <#ident as ::lightshadedb::table::TableOps<Db>>::update(self, row)
                         }
                     },
                     "delete" => quote! {
                         {
-                            let key = <#ident as ::lightshade::Table>::key_from_value(key)?;
-                            <#ident as ::lightshade::table::TableOps<Db>>::delete(self, key)
+                            let key = <#ident as ::lightshadedb::Table>::key_from_value(key)?;
+                            <#ident as ::lightshadedb::table::TableOps<Db>>::delete(self, key)
                         }
                     },
-                    "count" => quote!(<#ident as ::lightshade::table::TableOps<Db>>::count(self)),
+                    "count" => quote!(<#ident as ::lightshadedb::table::TableOps<Db>>::count(self)),
                     "scan" => quote! {
                         {
-                            let rows = <#ident as ::lightshade::table::TableOps<Db>>::scan(self)?;
+                            let rows = <#ident as ::lightshadedb::table::TableOps<Db>>::scan(self)?;
                             ::std::result::Result::Ok(rows
                                 .iter()
-                                .map(<#ident as ::lightshade::Table>::to_values)
+                                .map(<#ident as ::lightshadedb::Table>::to_values)
                                 .collect())
                         }
                     },
@@ -102,96 +102,96 @@ pub(crate) fn backend_impl_for(schema: &Schema, lowered: &LoweredSchema) -> Toke
     let scan = arms("scan");
     quote! {
         #[cfg(feature = "embedded")]
-        impl ::lightshade::Backend for Db {
-            fn __insert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<()> {
+        impl ::lightshadedb::Backend for Db {
+            fn __insert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<()> {
                 match table {
                     #(#insert)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __insert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>) -> ::lightshade::Result<()> {
+            fn __insert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>) -> ::lightshadedb::Result<()> {
                 match table {
                     #(#insert_many)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __upsert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<bool> {
+            fn __upsert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<bool> {
                 match table {
                     #(#upsert)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __upsert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>) -> ::lightshade::Result<u64> {
+            fn __upsert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>) -> ::lightshadedb::Result<u64> {
                 match table {
                     #(#upsert_many)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __get(&self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<::std::option::Option<::std::vec::Vec<::lightshade::table::Value>>> {
+            fn __get(&self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<::std::option::Option<::std::vec::Vec<::lightshadedb::table::Value>>> {
                 match table {
                     #(#get)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __contains(&self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<bool> {
+            fn __contains(&self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<bool> {
                 match table {
                     #(#contains)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __update(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<bool> {
+            fn __update(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<bool> {
                 match table {
                     #(#update)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __delete(&mut self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<bool> {
+            fn __delete(&mut self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<bool> {
                 match table {
                     #(#delete)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __count(&self, table: &'static str) -> ::lightshade::Result<u64> {
+            fn __count(&self, table: &'static str) -> ::lightshadedb::Result<u64> {
                 match table {
                     #(#count)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn __scan(&self, table: &'static str) -> ::lightshade::Result<::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>> {
+            fn __scan(&self, table: &'static str) -> ::lightshadedb::Result<::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>> {
                 match table {
                     #(#scan)*
-                    other => ::std::result::Result::Err(::lightshade::Error::Schema(
-                        ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+                    other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+                        ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
                     )),
                 }
             }
-            fn begin(&mut self) -> ::lightshade::Result<()> { Db::begin(self) }
-            fn commit(&mut self) -> ::lightshade::Result<()> { Db::commit(self) }
-            fn rollback(&mut self) -> ::lightshade::Result<()> { Db::rollback(self) }
+            fn begin(&mut self) -> ::lightshadedb::Result<()> { Db::begin(self) }
+            fn commit(&mut self) -> ::lightshadedb::Result<()> { Db::commit(self) }
+            fn rollback(&mut self) -> ::lightshadedb::Result<()> { Db::rollback(self) }
             fn in_transaction(&self) -> bool { Db::in_transaction(self) }
-            fn transaction<T, F>(&mut self, f: F) -> ::lightshade::Result<T>
-            where F: ::std::ops::FnOnce(&mut Self) -> ::lightshade::Result<T>, Self: ::std::marker::Sized {
+            fn transaction<T, F>(&mut self, f: F) -> ::lightshadedb::Result<T>
+            where F: ::std::ops::FnOnce(&mut Self) -> ::lightshadedb::Result<T>, Self: ::std::marker::Sized {
                 Db::transaction(self, f)
             }
-            fn close(self) -> ::lightshade::Result<()> { Db::close(self) }
+            fn close(self) -> ::lightshadedb::Result<()> { Db::close(self) }
         }
     }
 }

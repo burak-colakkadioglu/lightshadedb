@@ -1,6 +1,6 @@
 #![cfg(feature = "embedded")]
 
-use lightshade::{Error, ErrorKind};
+use lightshadedb::{Error, ErrorKind};
 use rust_messages::store::{self, Db, Inbox, Message, MessagePatch};
 
 fn inbox(id: i64) -> Inbox {
@@ -95,7 +95,7 @@ fn transactions_commit_and_roll_back() {
     .unwrap();
     assert_eq!(db.count::<Inbox>().unwrap(), 3);
 
-    let outcome: lightshade::Result<()> = db.transaction(|db| {
+    let outcome: lightshadedb::Result<()> = db.transaction(|db| {
         db.insert(inbox(5))?;
         Err(Error::Busy)
     });
@@ -148,7 +148,7 @@ fn databases_survive_close_and_reopen() {
 
 #[test]
 fn app_generic_backend_runs_the_same_logic() {
-    fn run(app: &mut impl store::Backend) -> lightshade::Result<()> {
+    fn run(app: &mut impl store::Backend) -> lightshadedb::Result<()> {
         app.insert(inbox(1))?;
         app.insert(message(1, 1, 100, false))?;
         assert_eq!(app.unread_count(1)?, 1);
@@ -185,7 +185,7 @@ fn read_only_and_missing_paths_are_typed() {
 
 #[test]
 fn admin_reports_and_backups_are_typed() {
-    use lightshade::admin::{BackupOptions, VerifyOptions};
+    use lightshadedb::admin::{BackupOptions, VerifyOptions};
 
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("messages.lsdb");

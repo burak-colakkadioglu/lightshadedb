@@ -1,5 +1,5 @@
-use lightshade_codegen::compiler::generate_interface;
-use lightshade_codegen::ir::{parse_workload, validate, Body, Workload};
+use lightshadedb_codegen::compiler::generate_interface;
+use lightshadedb_codegen::ir::{parse_workload, validate, Body, Workload};
 use std::env;
 use std::fs;
 use std::io::Write as _;
@@ -79,7 +79,7 @@ fn main() {
 
 fn usage() {
     println!(
-        "         lightshade - Lightshade Database Software\n\n\
+        "         lightshade - Lightshade DB\n\n\
          Usage:\n  \
          lightshade --version\n  \
          lightshade check <workload.lightshade>\n  \

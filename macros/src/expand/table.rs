@@ -1,7 +1,7 @@
 use super::types::{field_type_tokens, value_variant};
 use crate::lower::LoweredTable;
 use crate::model::ModelField;
-use lightshade_codegen::ir::Ty;
+use lightshadedb_codegen::ir::Ty;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::Ident;
@@ -20,8 +20,8 @@ pub(crate) fn table_items(
         handles.extend(quote! {
             impl #ident {
                 #[allow(non_upper_case_globals)]
-                pub const #field_ident: ::lightshade::Field<#ident, #ty> =
-                    ::lightshade::Field::new(#name, #field_ty);
+                pub const #field_ident: ::lightshadedb::Field<#ident, #ty> =
+                    ::lightshadedb::Field::new(#name, #field_ty);
             }
         });
     }
@@ -30,8 +30,8 @@ pub(crate) fn table_items(
         handles.extend(quote! {
             #[allow(non_upper_case_globals)]
             #[doc(hidden)]
-            pub const #ident: ::lightshade::TableHandle =
-                ::lightshade::TableHandle::new(#db_name);
+            pub const #ident: ::lightshadedb::TableHandle =
+                ::lightshadedb::TableHandle::new(#db_name);
         });
     }
 
@@ -61,7 +61,7 @@ pub(crate) fn table_items(
             let ty = field_type_tokens(field.ir);
             let primary = field.primary_key;
             let nullable = field.nullable;
-            quote!(::lightshade::Column {
+            quote!(::lightshadedb::Column {
                 name: #name,
                 ty: #ty,
                 primary_key: #primary,
@@ -74,11 +74,11 @@ pub(crate) fn table_items(
             if field.nullable {
                 let ty = field_type_tokens(field.ir);
                 quote!(match self.#field_ident.clone() {
-                    ::std::option::Option::Some(value) => ::lightshade::table::Value::#variant(value),
-                    ::std::option::Option::None => ::lightshade::table::Value::Null(#ty),
+                    ::std::option::Option::Some(value) => ::lightshadedb::table::Value::#variant(value),
+                    ::std::option::Option::None => ::lightshadedb::table::Value::Null(#ty),
                 })
             } else {
-                quote!(::lightshade::table::Value::#variant(self.#field_ident.clone()))
+                quote!(::lightshadedb::table::Value::#variant(self.#field_ident.clone()))
             }
         });
         let decoders = fields.iter().map(|field| {
@@ -91,16 +91,16 @@ pub(crate) fn table_items(
                 let field_ty = field_type_tokens(field.ir);
                 quote! {
                     let #field_ident: #ty = match values.next() {
-                        ::std::option::Option::Some(::lightshade::table::Value::#variant(value)) => ::std::option::Option::Some(value),
-                        ::std::option::Option::Some(::lightshade::table::Value::Null(ty)) if ty == #field_ty => ::std::option::Option::None,
+                        ::std::option::Option::Some(::lightshadedb::table::Value::#variant(value)) => ::std::option::Option::Some(value),
+                        ::std::option::Option::Some(::lightshadedb::table::Value::Null(ty)) if ty == #field_ty => ::std::option::Option::None,
                         ::std::option::Option::Some(other) => {
-                            return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                            return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                                 name: ::std::string::String::from(#field_ident_str),
                                 reason: ::std::format!("stored value is {} but the field is {}", other.field_type(), #field_ir),
                             });
                         }
                         ::std::option::Option::None => {
-                            return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                            return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                                 name: ::std::string::String::from(#field_ident_str),
                                 reason: ::std::string::String::from("row has too few values"),
                             });
@@ -110,15 +110,15 @@ pub(crate) fn table_items(
             } else {
                 quote! {
                     let #field_ident: #ty = match values.next() {
-                        ::std::option::Option::Some(::lightshade::table::Value::#variant(value)) => value,
+                        ::std::option::Option::Some(::lightshadedb::table::Value::#variant(value)) => value,
                         ::std::option::Option::Some(other) => {
-                            return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                            return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                                 name: ::std::string::String::from(#field_ident_str),
                                 reason: ::std::format!("stored value is {} but the field is {}", other.field_type(), #field_ir),
                             });
                         }
                         ::std::option::Option::None => {
-                            return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                            return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                                 name: ::std::string::String::from(#field_ident_str),
                                 reason: ::std::string::String::from("row has too few values"),
                             });
@@ -131,46 +131,46 @@ pub(crate) fn table_items(
         let key_variant = value_variant(key_field.ir);
         let key_from = match key_field.ir {
             Ty::Text => {
-                quote!(::lightshade::table::Value::Text(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::Text(value) => ::std::result::Result::Ok(value))
             }
             Ty::Bytes => {
-                quote!(::lightshade::table::Value::Bytes(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::Bytes(value) => ::std::result::Result::Ok(value))
             }
             Ty::Uuid => {
-                quote!(::lightshade::table::Value::Uuid(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::Uuid(value) => ::std::result::Result::Ok(value))
             }
             Ty::Bool => {
-                quote!(::lightshade::table::Value::Bool(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::Bool(value) => ::std::result::Result::Ok(value))
             }
             Ty::I8 => {
-                quote!(::lightshade::table::Value::I8(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::I8(value) => ::std::result::Result::Ok(value))
             }
             Ty::I16 => {
-                quote!(::lightshade::table::Value::I16(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::I16(value) => ::std::result::Result::Ok(value))
             }
             Ty::I32 => {
-                quote!(::lightshade::table::Value::I32(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::I32(value) => ::std::result::Result::Ok(value))
             }
             Ty::I64 => {
-                quote!(::lightshade::table::Value::I64(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::I64(value) => ::std::result::Result::Ok(value))
             }
             Ty::U8 => {
-                quote!(::lightshade::table::Value::U8(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::U8(value) => ::std::result::Result::Ok(value))
             }
             Ty::U16 => {
-                quote!(::lightshade::table::Value::U16(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::U16(value) => ::std::result::Result::Ok(value))
             }
             Ty::U32 => {
-                quote!(::lightshade::table::Value::U32(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::U32(value) => ::std::result::Result::Ok(value))
             }
             Ty::U64 => {
-                quote!(::lightshade::table::Value::U64(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::U64(value) => ::std::result::Result::Ok(value))
             }
             Ty::F32 => {
-                quote!(::lightshade::table::Value::F32(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::F32(value) => ::std::result::Result::Ok(value))
             }
             Ty::F64 => {
-                quote!(::lightshade::table::Value::F64(value) => ::std::result::Result::Ok(value))
+                quote!(::lightshadedb::table::Value::F64(value) => ::std::result::Result::Ok(value))
             }
         };
         let patch_apply = fields
@@ -187,20 +187,20 @@ pub(crate) fn table_items(
         if table.is_some() {
             handles.extend(quote! {
                 impl #ident {
-                    pub fn join_on(predicate: ::lightshade::Predicate) -> ::lightshade::Join {
+                    pub fn join_on(predicate: ::lightshadedb::Predicate) -> ::lightshadedb::Join {
                         let _ = predicate;
-                        ::lightshade::Join::new()
+                        ::lightshadedb::Join::new()
                     }
                 }
             });
         }
         patch.extend(quote! {
-            impl ::lightshade::Table for #ident {
+            impl ::lightshadedb::Table for #ident {
                 type Key = #key_ty;
                 type Patch = #patch_ident;
 
                 const NAME: &'static str = #db_name;
-                const COLUMNS: &'static [::lightshade::Column] = &[
+                const COLUMNS: &'static [::lightshadedb::Column] = &[
                     #(#columns,)*
                 ];
 
@@ -208,15 +208,15 @@ pub(crate) fn table_items(
                     &self.#key_ident
                 }
 
-                fn to_values(&self) -> ::std::vec::Vec<::lightshade::table::Value> {
+                fn to_values(&self) -> ::std::vec::Vec<::lightshadedb::table::Value> {
                     ::std::vec![#(#encoders,)*]
                 }
 
-                fn from_values(values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<Self> {
+                fn from_values(values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<Self> {
                     let mut values = values.into_iter();
                     #(#decoders)*
                     if values.next().is_some() {
-                        return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                        return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                             name: ::std::string::String::from("row"),
                             reason: ::std::string::String::from("row has too many values"),
                         });
@@ -225,14 +225,14 @@ pub(crate) fn table_items(
                 }
 
                 #[allow(clippy::ptr_arg)]
-                fn key_to_value(key: &Self::Key) -> ::lightshade::table::Value {
-                    ::lightshade::table::Value::#key_variant(key.clone())
+                fn key_to_value(key: &Self::Key) -> ::lightshadedb::table::Value {
+                    ::lightshadedb::table::Value::#key_variant(key.clone())
                 }
 
-                fn key_from_value(value: ::lightshade::table::Value) -> ::lightshade::Result<Self::Key> {
+                fn key_from_value(value: ::lightshadedb::table::Value) -> ::lightshadedb::Result<Self::Key> {
                     match value {
                         #key_from,
-                        other => ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                        other => ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                             name: ::std::string::String::from("primary key"),
                             reason: ::std::format!("stored key is {}", other.field_type()),
                         }),
@@ -250,7 +250,7 @@ pub(crate) fn table_items(
             let ty = field_type_tokens(field.ir);
             let primary = field.primary_key;
             let nullable = field.nullable;
-            quote!(::lightshade::Column {
+            quote!(::lightshadedb::Column {
                 name: #name,
                 ty: #ty,
                 primary_key: #primary,
@@ -267,16 +267,16 @@ pub(crate) fn table_items(
                 let field_ty = field_type_tokens(field.ir);
                 quote! {
                     let #field_ident: #ty = match values.next() {
-                        ::std::option::Option::Some(::lightshade::table::Value::#variant(value)) => ::std::option::Option::Some(value),
-                        ::std::option::Option::Some(::lightshade::table::Value::Null(ty)) if ty == #field_ty => ::std::option::Option::None,
+                        ::std::option::Option::Some(::lightshadedb::table::Value::#variant(value)) => ::std::option::Option::Some(value),
+                        ::std::option::Option::Some(::lightshadedb::table::Value::Null(ty)) if ty == #field_ty => ::std::option::Option::None,
                         ::std::option::Option::Some(other) => {
-                            return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                            return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                                 name: ::std::string::String::from(#field_ident_str),
                                 reason: ::std::format!("projected value is {} but the field is {}", other.field_type(), #field_ir),
                             });
                         }
                         ::std::option::Option::None => {
-                            return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                            return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                                 name: ::std::string::String::from(#field_ident_str),
                                 reason: ::std::string::String::from("projection returned too few values"),
                             });
@@ -286,15 +286,15 @@ pub(crate) fn table_items(
             } else {
                 quote! {
                     let #field_ident: #ty = match values.next() {
-                        ::std::option::Option::Some(::lightshade::table::Value::#variant(value)) => value,
+                        ::std::option::Option::Some(::lightshadedb::table::Value::#variant(value)) => value,
                         ::std::option::Option::Some(other) => {
-                            return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                            return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                                 name: ::std::string::String::from(#field_ident_str),
                                 reason: ::std::format!("projected value is {} but the field is {}", other.field_type(), #field_ir),
                             });
                         }
                         ::std::option::Option::None => {
-                            return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                            return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                                 name: ::std::string::String::from(#field_ident_str),
                                 reason: ::std::string::String::from("projection returned too few values"),
                             });
@@ -310,24 +310,24 @@ pub(crate) fn table_items(
             if field.nullable {
                 let ty = field_type_tokens(field.ir);
                 quote!(match self.#field_ident.clone() {
-                    ::std::option::Option::Some(value) => ::lightshade::table::Value::#variant(value),
-                    ::std::option::Option::None => ::lightshade::table::Value::Null(#ty),
+                    ::std::option::Option::Some(value) => ::lightshadedb::table::Value::#variant(value),
+                    ::std::option::Option::None => ::lightshadedb::table::Value::Null(#ty),
                 })
             } else {
-                quote!(::lightshade::table::Value::#variant(self.#field_ident.clone()))
+                quote!(::lightshadedb::table::Value::#variant(self.#field_ident.clone()))
             }
         });
         patch.extend(quote! {
-            impl ::lightshade::Projection for #ident {
-                const FIELDS: &'static [::lightshade::Column] = &[
+            impl ::lightshadedb::Projection for #ident {
+                const FIELDS: &'static [::lightshadedb::Column] = &[
                     #(#fields_tokens,)*
                 ];
 
-                fn from_values(values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<Self> {
+                fn from_values(values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<Self> {
                     let mut values = values.into_iter();
                     #(#decode)*
                     if values.next().is_some() {
-                        return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                        return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                             name: ::std::string::String::from("projection"),
                             reason: ::std::string::String::from("projection returned too many values"),
                         });
@@ -335,7 +335,7 @@ pub(crate) fn table_items(
                     ::std::result::Result::Ok(Self { #(#field_idents),* })
                 }
 
-                fn to_values(&self) -> ::std::vec::Vec<::lightshade::table::Value> {
+                fn to_values(&self) -> ::std::vec::Vec<::lightshadedb::table::Value> {
                     ::std::vec![#(#projection_encoders,)*]
                 }
             }
@@ -351,7 +351,7 @@ pub(crate) fn projection_select(ident: &Ident, fields: &[ModelField]) -> TokenSt
         let method = &field.ident;
         let ty = &field.ty;
         quote! {
-            pub fn #method(self, value: impl ::std::convert::Into<::lightshade::SelectValue<#ty>>) -> Self {
+            pub fn #method(self, value: impl ::std::convert::Into<::lightshadedb::SelectValue<#ty>>) -> Self {
                 let _ = value;
                 self
             }
@@ -403,25 +403,25 @@ pub(crate) fn table_ops_impl(table: &LoweredTable, ident: &Ident) -> TokenStream
     let db_name = &table.db_name;
     quote! {
         #[cfg(feature = "embedded")]
-        impl ::lightshade::table::TableOps<Db> for #ident {
-            fn insert(store: &mut Db, row: Self) -> ::lightshade::Result<()> {
+        impl ::lightshadedb::table::TableOps<Db> for #ident {
+            fn insert(store: &mut Db, row: Self) -> ::lightshadedb::Result<()> {
                 let inserted = __ls_public(store.inner.#insert(#(row.#field_args),*))?;
                 if inserted {
                     ::std::result::Result::Ok(())
                 } else {
-                    ::std::result::Result::Err(::lightshade::Error::DuplicateKey {
+                    ::std::result::Result::Err(::lightshadedb::Error::DuplicateKey {
                         table: ::std::string::String::from(#db_name),
                     })
                 }
             }
 
-            fn insert_many(store: &mut Db, rows: ::std::vec::Vec<Self>) -> ::lightshade::Result<()> {
+            fn insert_many(store: &mut Db, rows: ::std::vec::Vec<Self>) -> ::lightshadedb::Result<()> {
                 let own = !store.in_transaction();
                 if own {
                     store.begin()?;
                 }
                 for row in rows {
-                    if let ::std::result::Result::Err(error) = <Self as ::lightshade::table::TableOps<Db>>::insert(store, row) {
+                    if let ::std::result::Result::Err(error) = <Self as ::lightshadedb::table::TableOps<Db>>::insert(store, row) {
                         if own {
                             let _ = store.rollback();
                         }
@@ -431,18 +431,18 @@ pub(crate) fn table_ops_impl(table: &LoweredTable, ident: &Ident) -> TokenStream
                 if own { store.commit() } else { ::std::result::Result::Ok(()) }
             }
 
-            fn upsert(store: &mut Db, row: Self) -> ::lightshade::Result<bool> {
+            fn upsert(store: &mut Db, row: Self) -> ::lightshadedb::Result<bool> {
                 let own = !store.in_transaction();
                 if own {
                     store.begin()?;
                 }
                 let outcome = (|| {
                     let key = row.#key_ident.clone();
-                    if <Self as ::lightshade::table::TableOps<Db>>::contains(store, &key)? {
-                        <Self as ::lightshade::table::TableOps<Db>>::update(store, row)?;
+                    if <Self as ::lightshadedb::table::TableOps<Db>>::contains(store, &key)? {
+                        <Self as ::lightshadedb::table::TableOps<Db>>::update(store, row)?;
                         ::std::result::Result::Ok(false)
                     } else {
-                        <Self as ::lightshade::table::TableOps<Db>>::insert(store, row)?;
+                        <Self as ::lightshadedb::table::TableOps<Db>>::insert(store, row)?;
                         ::std::result::Result::Ok(true)
                     }
                 })();
@@ -458,14 +458,14 @@ pub(crate) fn table_ops_impl(table: &LoweredTable, ident: &Ident) -> TokenStream
                 }
             }
 
-            fn upsert_many(store: &mut Db, rows: ::std::vec::Vec<Self>) -> ::lightshade::Result<u64> {
+            fn upsert_many(store: &mut Db, rows: ::std::vec::Vec<Self>) -> ::lightshadedb::Result<u64> {
                 let own = !store.in_transaction();
                 if own {
                     store.begin()?;
                 }
                 let mut inserted = 0u64;
                 for row in rows {
-                    match <Self as ::lightshade::table::TableOps<Db>>::upsert(store, row) {
+                    match <Self as ::lightshadedb::table::TableOps<Db>>::upsert(store, row) {
                         ::std::result::Result::Ok(true) => inserted += 1,
                         ::std::result::Result::Ok(false) => {}
                         ::std::result::Result::Err(error) => {
@@ -478,39 +478,39 @@ pub(crate) fn table_ops_impl(table: &LoweredTable, ident: &Ident) -> TokenStream
                 ::std::result::Result::Ok(inserted)
             }
 
-            fn get(store: &Db, key: Self::Key) -> ::lightshade::Result<::std::option::Option<Self>> {
+            fn get(store: &Db, key: Self::Key) -> ::lightshadedb::Result<::std::option::Option<Self>> {
                 let mut rows = store.inner.#get(key);
                 ::std::result::Result::Ok(rows.pop())
             }
 
             #[allow(clippy::ptr_arg)]
-            fn contains(store: &Db, key: &Self::Key) -> ::lightshade::Result<bool> {
+            fn contains(store: &Db, key: &Self::Key) -> ::lightshadedb::Result<bool> {
                 ::std::result::Result::Ok(store.inner.#contains(key.clone()) > 0)
             }
 
-            fn update(store: &mut Db, row: Self) -> ::lightshade::Result<bool> {
+            fn update(store: &mut Db, row: Self) -> ::lightshadedb::Result<bool> {
                 ::std::result::Result::Ok(__ls_public(store.inner.#update(#(#update_args),*))? > 0)
             }
 
-            fn patch(store: &mut Db, key: Self::Key, patch: Self::Patch) -> ::lightshade::Result<bool> {
+            fn patch(store: &mut Db, key: Self::Key, patch: Self::Patch) -> ::lightshadedb::Result<bool> {
                 let ::std::option::Option::Some(mut row) =
-                    <Self as ::lightshade::table::TableOps<Db>>::get(store, key)?
+                    <Self as ::lightshadedb::table::TableOps<Db>>::get(store, key)?
                 else {
                     return ::std::result::Result::Ok(false);
                 };
                 #(#patch_fields)*
-                <Self as ::lightshade::table::TableOps<Db>>::update(store, row)
+                <Self as ::lightshadedb::table::TableOps<Db>>::update(store, row)
             }
 
-            fn delete(store: &mut Db, key: Self::Key) -> ::lightshade::Result<bool> {
+            fn delete(store: &mut Db, key: Self::Key) -> ::lightshadedb::Result<bool> {
                 ::std::result::Result::Ok(__ls_public(store.inner.#delete(#key_arg))? > 0)
             }
 
-            fn count(store: &Db) -> ::lightshade::Result<u64> {
+            fn count(store: &Db) -> ::lightshadedb::Result<u64> {
                 ::std::result::Result::Ok(store.inner.#count() as u64)
             }
 
-            fn scan(store: &Db) -> ::lightshade::Result<::std::vec::Vec<Self>> {
+            fn scan(store: &Db) -> ::lightshadedb::Result<::std::vec::Vec<Self>> {
                 ::std::result::Result::Ok(store.inner.#scan())
             }
         }

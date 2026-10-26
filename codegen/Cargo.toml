@@ -1,8 +1,10 @@
 [package]
-name = "lightshade-codegen"
+name = "lightshadedb-codegen"
 version.workspace = true
 edition.workspace = true
-description = "Lightshade IR, validation, and specialized code generation."
+license.workspace = true
+repository.workspace = true
+description = "Lightshade DB IR, validation, and specialized code generation."
 
 [lib]
 path = "src/lib.rs"

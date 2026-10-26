@@ -43,7 +43,7 @@ if (( READERS < 1 )); then
     exit 2
 fi
 if [[ ! -x "$CLI" ]]; then
-    cargo build --release -p lightshade --bin lightshade
+    cargo build --release -p lightshadedb --bin lightshade
 fi
 
 mkdir -p "$WORK"

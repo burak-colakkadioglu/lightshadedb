@@ -58,7 +58,7 @@ must reference output fields, and duplicate order keys are rejected.
 ## Aggregates and projections
 
 ```rust
-#[lightshade::query(
+#[lightshadedb::query(
     from = Message,
     select = Summary::select()
         .total(count())

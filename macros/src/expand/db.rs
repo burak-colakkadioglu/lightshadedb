@@ -22,7 +22,7 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
     let verify_tables = schema.tables.iter().enumerate().map(|(index, table)| {
         let name = &table.db_name;
         quote! {
-            ::lightshade::admin::TableReport {
+            ::lightshadedb::admin::TableReport {
                 name: ::std::string::String::from(#name),
                 rows: counts.get(#index).copied().unwrap_or(0),
             }
@@ -37,7 +37,7 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
             let has_default = field.default.is_some();
             let nullable = field.nullable;
             quote! {
-                ::lightshade::admin::FieldInspect {
+                ::lightshadedb::admin::FieldInspect {
                     name: ::std::string::String::from(#field_name),
                     ty: #ty,
                     primary_key: #primary,
@@ -47,7 +47,7 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
             }
         });
         quote! {
-            ::lightshade::admin::TableInspect {
+            ::lightshadedb::admin::TableInspect {
                 name: ::std::string::String::from(#name),
                 rows: counts.get(#index).copied().unwrap_or(0),
                 fields: ::std::vec![#(#fields,)*],
@@ -57,15 +57,15 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
     quote! {
         #[cfg(feature = "embedded")]
         pub struct Db {
-            inner: __lightshade::Db,
+            inner: __lightshadedb::Db,
             path: ::std::path::PathBuf,
         }
 
         #[cfg(feature = "embedded")]
         impl Db {
-            pub fn open(path: impl ::std::convert::AsRef<::std::path::Path>) -> ::lightshade::Result<Self> {
+            pub fn open(path: impl ::std::convert::AsRef<::std::path::Path>) -> ::lightshadedb::Result<Self> {
                 let path = path.as_ref();
-                let inner = match __lightshade::Db::open(path) {
+                let inner = match __lightshadedb::Db::open(path) {
                     ::std::result::Result::Ok(inner) => inner,
                     ::std::result::Result::Err(error)
                         if error.to_string().contains("snapshot schema mismatch")
@@ -73,10 +73,10 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                     {
                         let plan = migration_plan(path)?;
                         if plan.is_empty() {
-                            __ls_public(__lightshade::Db::open_migrated(path))?
+                            __ls_public(__lightshadedb::Db::open_migrated(path))?
                         } else {
-                            return ::std::result::Result::Err(::lightshade::Error::Migration(
-                                ::lightshade::MigrationError::Required {
+                            return ::std::result::Result::Err(::lightshadedb::Error::Migration(
+                                ::lightshadedb::MigrationError::Required {
                                     destructive: plan.destructive,
                                     additions: plan.additions,
                                     removals: plan.removals,
@@ -91,11 +91,11 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
 
             pub fn open_with(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
-                options: ::lightshade::OpenOptions,
-            ) -> ::lightshade::Result<Self> {
+                options: ::lightshadedb::OpenOptions,
+            ) -> ::lightshadedb::Result<Self> {
                 let path = path.as_ref();
                 if !options.create && !path.exists() {
-                    return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                    return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                         path: path.to_path_buf(),
                     });
                 }
@@ -105,49 +105,49 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                 if options.migrate {
                     return Self::open_migrated(path);
                 }
-                let inner = __ls_public(__lightshade::Db::open(path))?;
+                let inner = __ls_public(__lightshadedb::Db::open(path))?;
                 Ok(Self { inner, path: path.to_path_buf() })
             }
 
             pub fn open_read_only(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
-            ) -> ::lightshade::Result<Self> {
+            ) -> ::lightshadedb::Result<Self> {
                 let path = path.as_ref();
                 if !path.exists() {
-                    return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                    return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                         path: path.to_path_buf(),
                     });
                 }
-                let inner = __ls_public(__lightshade::Db::open_read_only(path))?;
+                let inner = __ls_public(__lightshadedb::Db::open_read_only(path))?;
                 Ok(Self { inner, path: path.to_path_buf() })
             }
 
             pub fn open_migrated(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
-            ) -> ::lightshade::Result<Self> {
-                Self::open_migrated_with(path, ::lightshade::MigrationOptions::default())
+            ) -> ::lightshadedb::Result<Self> {
+                Self::open_migrated_with(path, ::lightshadedb::MigrationOptions::default())
             }
 
             pub fn open_migrated_with(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
-                options: ::lightshade::MigrationOptions,
-            ) -> ::lightshade::Result<Self> {
+                options: ::lightshadedb::MigrationOptions,
+            ) -> ::lightshadedb::Result<Self> {
                 let path = path.as_ref();
                 migrate(path, options)?;
                 Self::open(path)
             }
 
-            pub fn open_in_memory() -> ::lightshade::Result<Self> {
-                let inner = __ls_public(__lightshade::Db::open_in_memory())?;
+            pub fn open_in_memory() -> ::lightshadedb::Result<Self> {
+                let inner = __ls_public(__lightshadedb::Db::open_in_memory())?;
                 Ok(Self { inner, path: ::std::path::PathBuf::new() })
             }
 
             pub fn recover(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
-                options: ::lightshade::RecoverOptions,
-            ) -> ::lightshade::Result<Self> {
+                options: ::lightshadedb::RecoverOptions,
+            ) -> ::lightshadedb::Result<Self> {
                 let path = path.as_ref();
-                let inner = __ls_public(__lightshade::Db::recover(path, options.discard_wal))?;
+                let inner = __ls_public(__lightshadedb::Db::recover(path, options.discard_wal))?;
                 Ok(Self { inner, path: path.to_path_buf() })
             }
 
@@ -167,28 +167,28 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                 self.inner.in_transaction()
             }
 
-            pub fn flush(&mut self) -> ::lightshade::Result<()> {
+            pub fn flush(&mut self) -> ::lightshadedb::Result<()> {
                 __ls_public(self.inner.flush())
             }
 
-            pub fn checkpoint(&mut self) -> ::lightshade::Result<()> {
+            pub fn checkpoint(&mut self) -> ::lightshadedb::Result<()> {
                 __ls_public(self.inner.checkpoint())
             }
 
             pub fn verify(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
-                options: ::lightshade::admin::VerifyOptions,
-            ) -> ::lightshade::Result<::lightshade::admin::VerifyReport> {
+                options: ::lightshadedb::admin::VerifyOptions,
+            ) -> ::lightshadedb::Result<::lightshadedb::admin::VerifyReport> {
                 let path = path.as_ref();
                 if !path.exists() {
-                    return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                    return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                         path: path.to_path_buf(),
                     });
                 }
                 let started = ::std::time::Instant::now();
                 let (lsn, rows, snapshot_bytes, wal_bytes, schema_fingerprint, counts) =
-                    __ls_public(__lightshade::Db::__ls_admin_verify(path))?;
-                Ok(::lightshade::admin::VerifyReport {
+                    __ls_public(__lightshadedb::Db::__ls_admin_verify(path))?;
+                Ok(::lightshadedb::admin::VerifyReport {
                     ok: true,
                     lsn,
                     schema_fingerprint,
@@ -204,16 +204,16 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
 
             pub fn inspect(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
-            ) -> ::lightshade::Result<::lightshade::admin::InspectReport> {
+            ) -> ::lightshadedb::Result<::lightshadedb::admin::InspectReport> {
                 let path = path.as_ref();
                 if !path.exists() {
-                    return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                    return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                         path: path.to_path_buf(),
                     });
                 }
                 let (format_version, wal_version, schema_fingerprint, workload, lsn, rows, snapshot_bytes, wal_bytes, counts) =
-                    __ls_public(__lightshade::Db::__ls_admin_inspect(path))?;
-                Ok(::lightshade::admin::InspectReport {
+                    __ls_public(__lightshadedb::Db::__ls_admin_inspect(path))?;
+                Ok(::lightshadedb::admin::InspectReport {
                     path: path.to_path_buf(),
                     format_version,
                     wal_version,
@@ -230,19 +230,19 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
             pub fn backup(
                 source: impl ::std::convert::AsRef<::std::path::Path>,
                 destination: impl ::std::convert::AsRef<::std::path::Path>,
-                options: ::lightshade::admin::BackupOptions,
-            ) -> ::lightshade::Result<::lightshade::admin::BackupReport> {
+                options: ::lightshadedb::admin::BackupOptions,
+            ) -> ::lightshadedb::Result<::lightshadedb::admin::BackupReport> {
                 let source = source.as_ref();
                 let destination = destination.as_ref();
                 if !source.exists() {
-                    return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                    return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                         path: source.to_path_buf(),
                     });
                 }
                 let (lsn, rows, bytes) = __ls_public(
-                    __lightshade::Db::__ls_admin_backup(source, destination, options.overwrite),
+                    __lightshadedb::Db::__ls_admin_backup(source, destination, options.overwrite),
                 )?;
-                Ok(::lightshade::admin::BackupReport {
+                Ok(::lightshadedb::admin::BackupReport {
                     lsn,
                     rows,
                     bytes,
@@ -252,16 +252,16 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
 
             pub fn compact(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
-            ) -> ::lightshade::Result<::lightshade::admin::CompactReport> {
+            ) -> ::lightshadedb::Result<::lightshadedb::admin::CompactReport> {
                 let path = path.as_ref();
                 if !path.exists() {
-                    return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                    return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                         path: path.to_path_buf(),
                     });
                 }
                 let (lsn, rows, snapshot_before, snapshot_after, wal_before, wal_after) =
-                    __ls_public(__lightshade::Db::__ls_admin_compact(path))?;
-                Ok(::lightshade::admin::CompactReport {
+                    __ls_public(__lightshadedb::Db::__ls_admin_compact(path))?;
+                Ok(::lightshadedb::admin::CompactReport {
                     lsn,
                     rows,
                     snapshot_before,
@@ -274,16 +274,16 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
             pub fn recover_report(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
                 discard_wal: bool,
-            ) -> ::lightshade::Result<::lightshade::admin::RecoverReport> {
+            ) -> ::lightshadedb::Result<::lightshadedb::admin::RecoverReport> {
                 let path = path.as_ref();
                 if !path.exists() {
-                    return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                    return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                         path: path.to_path_buf(),
                     });
                 }
                 let (lsn, rows) =
-                    __ls_public(__lightshade::Db::__ls_admin_recover(path, discard_wal))?;
-                Ok(::lightshade::admin::RecoverReport {
+                    __ls_public(__lightshadedb::Db::__ls_admin_recover(path, discard_wal))?;
+                Ok(::lightshadedb::admin::RecoverReport {
                     lsn,
                     wal_records: 0,
                     discarded_wal: discard_wal,
@@ -291,19 +291,19 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                 })
             }
 
-            pub fn close(self) -> ::lightshade::Result<()> {
+            pub fn close(self) -> ::lightshadedb::Result<()> {
                 __ls_public(self.inner.close())
             }
 
-            pub fn begin(&mut self) -> ::lightshade::Result<()> {
+            pub fn begin(&mut self) -> ::lightshadedb::Result<()> {
                 __ls_public(self.inner.begin())
             }
 
-            pub fn commit(&mut self) -> ::lightshade::Result<()> {
+            pub fn commit(&mut self) -> ::lightshadedb::Result<()> {
                 __ls_public(self.inner.commit())
             }
 
-            pub fn rollback(&mut self) -> ::lightshade::Result<()> {
+            pub fn rollback(&mut self) -> ::lightshadedb::Result<()> {
                 __ls_public(self.inner.rollback())
             }
 
@@ -316,7 +316,7 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
             fn __ls_wal_sync_handle(
                 &self,
             ) -> ::std::option::Option<
-                ::std::sync::Arc<__lightshade::__LsWalSync>,
+                ::std::sync::Arc<__lightshadedb::__LsWalSync>,
             > {
                 self.inner.__ls_wal_sync_handle()
             }
@@ -331,8 +331,8 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
 
             pub fn transaction<T>(
                 &mut self,
-                f: impl ::std::ops::FnOnce(&mut Db) -> ::lightshade::Result<T>,
-            ) -> ::lightshade::Result<T> {
+                f: impl ::std::ops::FnOnce(&mut Db) -> ::lightshadedb::Result<T>,
+            ) -> ::lightshadedb::Result<T> {
                 self.begin()?;
                 let outcome = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| f(self)));
                 match outcome {
@@ -351,90 +351,90 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                 }
             }
 
-            pub fn insert<T: ::lightshade::table::TableOps<Db>>(&mut self, row: T) -> ::lightshade::Result<()> {
+            pub fn insert<T: ::lightshadedb::table::TableOps<Db>>(&mut self, row: T) -> ::lightshadedb::Result<()> {
                 T::insert(self, row)
             }
 
-            pub fn insert_many<T: ::lightshade::table::TableOps<Db>>(
+            pub fn insert_many<T: ::lightshadedb::table::TableOps<Db>>(
                 &mut self,
                 rows: impl ::std::iter::IntoIterator<Item = T>,
-            ) -> ::lightshade::Result<()> {
+            ) -> ::lightshadedb::Result<()> {
                 T::insert_many(self, rows.into_iter().collect())
             }
 
-            pub fn upsert<T: ::lightshade::table::TableOps<Db>>(&mut self, row: T) -> ::lightshade::Result<bool> {
+            pub fn upsert<T: ::lightshadedb::table::TableOps<Db>>(&mut self, row: T) -> ::lightshadedb::Result<bool> {
                 T::upsert(self, row)
             }
 
-            pub fn upsert_many<T: ::lightshade::table::TableOps<Db>>(
+            pub fn upsert_many<T: ::lightshadedb::table::TableOps<Db>>(
                 &mut self,
                 rows: impl ::std::iter::IntoIterator<Item = T>,
-            ) -> ::lightshade::Result<u64> {
+            ) -> ::lightshadedb::Result<u64> {
                 T::upsert_many(self, rows.into_iter().collect())
             }
 
-            pub fn get<T: ::lightshade::table::TableOps<Db>>(&self, key: T::Key) -> ::lightshade::Result<::std::option::Option<T>> {
+            pub fn get<T: ::lightshadedb::table::TableOps<Db>>(&self, key: T::Key) -> ::lightshadedb::Result<::std::option::Option<T>> {
                 T::get(self, key)
             }
 
-            pub fn contains<T: ::lightshade::table::TableOps<Db>>(&self, key: &T::Key) -> ::lightshade::Result<bool> {
+            pub fn contains<T: ::lightshadedb::table::TableOps<Db>>(&self, key: &T::Key) -> ::lightshadedb::Result<bool> {
                 T::contains(self, key)
             }
 
-            pub fn update<T: ::lightshade::table::TableOps<Db>>(&mut self, row: T) -> ::lightshade::Result<bool> {
+            pub fn update<T: ::lightshadedb::table::TableOps<Db>>(&mut self, row: T) -> ::lightshadedb::Result<bool> {
                 T::update(self, row)
             }
 
-            pub fn patch<T: ::lightshade::table::TableOps<Db>>(
+            pub fn patch<T: ::lightshadedb::table::TableOps<Db>>(
                 &mut self,
                 key: T::Key,
                 patch: T::Patch,
-            ) -> ::lightshade::Result<bool> {
+            ) -> ::lightshadedb::Result<bool> {
                 T::patch(self, key, patch)
             }
 
-            pub fn delete<T: ::lightshade::table::TableOps<Db>>(&mut self, key: T::Key) -> ::lightshade::Result<bool> {
+            pub fn delete<T: ::lightshadedb::table::TableOps<Db>>(&mut self, key: T::Key) -> ::lightshadedb::Result<bool> {
                 T::delete(self, key)
             }
 
-            pub fn count<T: ::lightshade::table::TableOps<Db>>(&self) -> ::lightshade::Result<u64> {
+            pub fn count<T: ::lightshadedb::table::TableOps<Db>>(&self) -> ::lightshadedb::Result<u64> {
                 T::count(self)
             }
 
-            pub fn scan<T: ::lightshade::table::TableOps<Db>>(&self) -> ::lightshade::Result<::std::vec::Vec<T>> {
+            pub fn scan<T: ::lightshadedb::table::TableOps<Db>>(&self) -> ::lightshadedb::Result<::std::vec::Vec<T>> {
                 T::scan(self)
             }
 
             pub fn dump(
                 &self,
                 dest: impl ::std::convert::AsRef<::std::path::Path>,
-            ) -> ::lightshade::Result<::lightshade::dataplane::DumpReport> {
+            ) -> ::lightshadedb::Result<::lightshadedb::dataplane::DumpReport> {
                 let tables = ::std::vec![
-                    #(::lightshade::dataplane::DumpTable {
-                        name: <#dataplane_tables as ::lightshade::Table>::NAME,
-                        columns: <#dataplane_tables as ::lightshade::Table>::COLUMNS,
+                    #(::lightshadedb::dataplane::DumpTable {
+                        name: <#dataplane_tables as ::lightshadedb::Table>::NAME,
+                        columns: <#dataplane_tables as ::lightshadedb::Table>::COLUMNS,
                         rows: self
                             .scan::<#dataplane_tables>()?
                             .into_iter()
-                            .map(|row| <#dataplane_tables as ::lightshade::Table>::to_values(&row))
+                            .map(|row| <#dataplane_tables as ::lightshadedb::Table>::to_values(&row))
                             .collect(),
                     },)*
                 ];
-                ::lightshade::dataplane::write_dump_file(&tables, dest)
+                ::lightshadedb::dataplane::write_dump_file(&tables, dest)
             }
 
             pub fn restore(
                 db_path: impl ::std::convert::AsRef<::std::path::Path>,
                 src: impl ::std::convert::AsRef<::std::path::Path>,
-            ) -> ::lightshade::Result<::lightshade::dataplane::RestoreReport> {
-                let dump = ::lightshade::dataplane::read_dump_file(src)?;
-                ::lightshade::dataplane::check_tables(
-                    &[#((<#dataplane_tables as ::lightshade::Table>::NAME, <#dataplane_tables as ::lightshade::Table>::COLUMNS),)*],
+            ) -> ::lightshadedb::Result<::lightshadedb::dataplane::RestoreReport> {
+                let dump = ::lightshadedb::dataplane::read_dump_file(src)?;
+                ::lightshadedb::dataplane::check_tables(
+                    &[#((<#dataplane_tables as ::lightshadedb::Table>::NAME, <#dataplane_tables as ::lightshadedb::Table>::COLUMNS),)*],
                     &dump,
                 )?;
                 let db_path = db_path.as_ref();
                 if db_path.exists() {
-                    return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                    return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                         name: ::std::string::String::from("restore target"),
                         reason: ::std::format!("restore target `{}` already exists", db_path.display()),
                     });
@@ -447,8 +447,8 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                             let typed = table
                                 .rows
                                 .iter()
-                                .map(|values| <#dataplane_tables as ::lightshade::Table>::from_values(values.clone()))
-                                .collect::<::lightshade::Result<::std::vec::Vec<_>>>()?;
+                                .map(|values| <#dataplane_tables as ::lightshadedb::Table>::from_values(values.clone()))
+                                .collect::<::lightshadedb::Result<::std::vec::Vec<_>>>()?;
                             rows += typed.len() as u64;
                             db.insert_many::<#dataplane_tables>(typed)?;
                         })*
@@ -456,24 +456,24 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                     }
                 }
                 db.close()?;
-                ::std::result::Result::Ok(::lightshade::dataplane::RestoreReport {
+                ::std::result::Result::Ok(::lightshadedb::dataplane::RestoreReport {
                     tables: dump.len(),
                     rows,
                 })
             }
 
-            pub fn export_csv<T: ::lightshade::Table>(
+            pub fn export_csv<T: ::lightshadedb::Table>(
                 &self,
                 dest: impl ::std::convert::AsRef<::std::path::Path>,
-            ) -> ::lightshade::Result<::lightshade::dataplane::ExportReport> {
-                ::lightshade::dataplane::export_csv::<T, Self>(self, dest)
+            ) -> ::lightshadedb::Result<::lightshadedb::dataplane::ExportReport> {
+                ::lightshadedb::dataplane::export_csv::<T, Self>(self, dest)
             }
 
-            pub fn import_csv<T: ::lightshade::Table>(
+            pub fn import_csv<T: ::lightshadedb::Table>(
                 &mut self,
                 src: impl ::std::convert::AsRef<::std::path::Path>,
-            ) -> ::lightshade::Result<::lightshade::dataplane::ImportReport> {
-                ::lightshade::dataplane::import_csv::<T, Self>(self, src)
+            ) -> ::lightshadedb::Result<::lightshadedb::dataplane::ImportReport> {
+                ::lightshadedb::dataplane::import_csv::<T, Self>(self, src)
             }
 
             #(#operation_impls)*

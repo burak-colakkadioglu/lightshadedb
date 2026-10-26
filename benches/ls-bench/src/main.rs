@@ -1,14 +1,14 @@
-use lightshade::prelude::*;
+use lightshadedb::prelude::*;
 use redb::{ReadableDatabase, ReadableTable};
 use std::path::PathBuf;
 use std::time::Instant;
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Message {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub inbox_id: i64,
         pub sent_at: i64,
@@ -16,16 +16,16 @@ pub mod store {
         pub body: String,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Messages {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false),
             order = (Message::sent_at.desc(), Message::id.desc()),
             limit = limit,
         )]
         fn recent_unread(&self, inbox: i64, limit: i64) -> Result<Vec<Message>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             count,
             filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false),
         )]
@@ -104,7 +104,7 @@ fn run_lightshade(
     dir: &std::path::Path,
     rows: usize,
     sample: &mut Sample,
-) -> lightshade::Result<Vec<Phase>> {
+) -> lightshadedb::Result<Vec<Phase>> {
     let mut db = store::Db::open(dir.join("bench.lsdb"))?;
     let mut phases = Vec::new();
     let mut insert = Phase {
@@ -199,9 +199,9 @@ fn run_lightshade_client(
     dir: &std::path::Path,
     rows: usize,
     sample: &mut Sample,
-) -> lightshade::Result<Vec<Phase>> {
-    use lightshade::secret::{Credential, Role};
-    use lightshade::{ClientOptions, Credentials, CredentialsSource, Secret};
+) -> lightshadedb::Result<Vec<Phase>> {
+    use lightshadedb::secret::{Credential, Role};
+    use lightshadedb::{ClientOptions, Credentials, CredentialsSource, Secret};
     let db = store::Db::open(dir.join("bench.lsdb"))?;
     let mut credentials = Credentials::new();
     credentials.insert(Credential {
@@ -209,12 +209,14 @@ fn run_lightshade_client(
         secret: Secret::new("bench-secret"),
         role: Role::Writer,
     });
-    let mut options = lightshade::ServeOptions::new(CredentialsSource::Static(credentials));
-    options.listen = lightshade::Listen::tcp_local(0);
+    let mut options = lightshadedb::ServeOptions::new(CredentialsSource::Static(credentials));
+    options.listen = lightshadedb::Listen::tcp_local(0);
     let server = store::Server::start(db, options)?;
     let addr = server.local_addr().expect("bound TCP address");
-    let client_options =
-        ClientOptions::new(lightshade::ClientCredentials::new("bench", "bench-secret"));
+    let client_options = ClientOptions::new(lightshadedb::ClientCredentials::new(
+        "bench",
+        "bench-secret",
+    ));
     let mut client = store::Client::connect_tcp(addr, client_options)?;
     let mut phases = Vec::new();
     let mut insert = Phase {
@@ -328,9 +330,9 @@ fn run_lightshade_client_x16(
     dir: &std::path::Path,
     rows: usize,
     sample: &mut Sample,
-) -> lightshade::Result<Vec<Phase>> {
-    use lightshade::secret::{Credential, Role};
-    use lightshade::{ClientOptions, Credentials, CredentialsSource, Secret};
+) -> lightshadedb::Result<Vec<Phase>> {
+    use lightshadedb::secret::{Credential, Role};
+    use lightshadedb::{ClientOptions, Credentials, CredentialsSource, Secret};
     let db = store::Db::open(dir.join("bench.lsdb"))?;
     let mut credentials = Credentials::new();
     credentials.insert(Credential {
@@ -338,8 +340,8 @@ fn run_lightshade_client_x16(
         secret: Secret::new("bench-secret"),
         role: Role::Writer,
     });
-    let mut options = lightshade::ServeOptions::new(CredentialsSource::Static(credentials));
-    options.listen = lightshade::Listen::tcp_local(0);
+    let mut options = lightshadedb::ServeOptions::new(CredentialsSource::Static(credentials));
+    options.listen = lightshadedb::Listen::tcp_local(0);
     let server = store::Server::start(db, options)?;
     let addr = server.local_addr().expect("bound TCP address");
     let threads: usize = std::env::var("LS_BENCH_THREADS")
@@ -347,12 +349,14 @@ fn run_lightshade_client_x16(
         .and_then(|v| v.parse().ok())
         .unwrap_or(16);
     let chunk = rows.div_ceil(threads);
-    let insert_handles: Vec<std::thread::JoinHandle<lightshade::Result<Vec<u64>>>> = (0..threads)
+    let insert_handles: Vec<std::thread::JoinHandle<lightshadedb::Result<Vec<u64>>>> = (0..threads)
         .map(|t| {
             let start = t * chunk;
             let end = ((t + 1) * chunk).min(rows);
-            let options =
-                ClientOptions::new(lightshade::ClientCredentials::new("bench", "bench-secret"));
+            let options = ClientOptions::new(lightshadedb::ClientCredentials::new(
+                "bench",
+                "bench-secret",
+            ));
             std::thread::spawn(move || {
                 let mut client = store::Client::connect_tcp(addr, options)?;
                 let mut inserted = Vec::new();
@@ -379,12 +383,14 @@ fn run_lightshade_client_x16(
         inserted.append(&mut part);
     }
     sample.observe();
-    let get_handles: Vec<std::thread::JoinHandle<lightshade::Result<Vec<u64>>>> = (0..threads)
+    let get_handles: Vec<std::thread::JoinHandle<lightshadedb::Result<Vec<u64>>>> = (0..threads)
         .map(|t| {
             let start = t * chunk;
             let end = ((t + 1) * chunk).min(rows);
-            let options =
-                ClientOptions::new(lightshade::ClientCredentials::new("bench", "bench-secret"));
+            let options = ClientOptions::new(lightshadedb::ClientCredentials::new(
+                "bench",
+                "bench-secret",
+            ));
             std::thread::spawn(move || {
                 let client = store::Client::connect_tcp(addr, options)?;
                 let mut fetched = Vec::new();
@@ -416,11 +422,13 @@ fn run_lightshade_client_x16(
         ops: 16,
         nanos: Vec::with_capacity(16),
     };
-    type ScanPair = lightshade::Result<(Vec<u64>, Vec<u64>)>;
+    type ScanPair = lightshadedb::Result<(Vec<u64>, Vec<u64>)>;
     let scan_handles: Vec<std::thread::JoinHandle<ScanPair>> = (0..threads)
         .map(|t| {
-            let options =
-                ClientOptions::new(lightshade::ClientCredentials::new("bench", "bench-secret"));
+            let options = ClientOptions::new(lightshadedb::ClientCredentials::new(
+                "bench",
+                "bench-secret",
+            ));
             std::thread::spawn(move || {
                 let client = store::Client::connect_tcp(addr, options)?;
                 let mut scan_ns = Vec::new();
@@ -465,10 +473,12 @@ fn run_lightshade_client_x16(
         ops: 0,
         nanos: Vec::new(),
     };
-    let batch_handles: Vec<std::thread::JoinHandle<lightshade::Result<Vec<u64>>>> = (0..threads)
+    let batch_handles: Vec<std::thread::JoinHandle<lightshadedb::Result<Vec<u64>>>> = (0..threads)
         .map(|t| {
-            let options =
-                ClientOptions::new(lightshade::ClientCredentials::new("bench", "bench-secret"));
+            let options = ClientOptions::new(lightshadedb::ClientCredentials::new(
+                "bench",
+                "bench-secret",
+            ));
             std::thread::spawn(move || {
                 let mut client = store::Client::connect_tcp(addr, options)?;
                 let span = rows.div_ceil(threads);

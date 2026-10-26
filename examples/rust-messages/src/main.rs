@@ -1,6 +1,6 @@
 use rust_messages::store;
 
-fn run(app: &mut impl store::Backend) -> lightshade::Result<()> {
+fn run(app: &mut impl store::Backend) -> lightshadedb::Result<()> {
     app.insert(store::Inbox {
         id: 7,
         owner: "ada".into(),
@@ -37,13 +37,13 @@ fn run(app: &mut impl store::Backend) -> lightshade::Result<()> {
 }
 
 #[cfg(feature = "embedded")]
-fn main() -> lightshade::Result<()> {
+fn main() -> lightshadedb::Result<()> {
     let mut app = store::App::open(store::AppConfig::embedded(":memory:"))?;
     run(&mut app)
 }
 
 #[cfg(all(feature = "client", not(feature = "embedded")))]
-fn main() -> lightshade::Result<()> {
+fn main() -> lightshadedb::Result<()> {
     let mut app = store::App::from_env()?;
     run(&mut app)
 }

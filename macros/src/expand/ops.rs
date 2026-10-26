@@ -1,5 +1,5 @@
 use crate::model::{type_is, Operation, OperationKind, Schema};
-use lightshade_codegen::ir::Ty;
+use lightshadedb_codegen::ir::Ty;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::spanned::Spanned;
@@ -220,8 +220,8 @@ pub(crate) fn operation_return(
 
 pub(crate) fn row_trait(projection: bool) -> TokenStream {
     if projection {
-        quote!(::lightshade::Projection)
+        quote!(::lightshadedb::Projection)
     } else {
-        quote!(::lightshade::Table)
+        quote!(::lightshadedb::Table)
     }
 }

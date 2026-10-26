@@ -1,28 +1,28 @@
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Inbox {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub owner: String,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct UnreadDigest {
         pub owner: String,
         pub total: i64,
         pub newest: i64,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct Summary {
         pub total: i64,
         pub newest: i64,
     }
 
     pub struct Message {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub inbox_id: i64,
         pub sent_at: i64,
@@ -30,16 +30,16 @@ pub mod store {
         pub body: String,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Messages {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false),
             order = (Message::sent_at.desc(), Message::id.desc()),
             limit = limit,
         )]
         fn recent_unread(&self, inbox: i64, limit: i64) -> Result<Vec<Message>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Message::inbox_id.eq(inbox),
             order = (Message::sent_at.asc(), Message::id.asc()),
             limit = limit,
@@ -47,10 +47,10 @@ pub mod store {
         )]
         fn inbox_page(&self, inbox: i64, limit: i64, skip: i64) -> Result<Vec<Message>>;
 
-        #[lightshade::query(count, filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false))]
+        #[lightshadedb::query(count, filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false))]
         fn unread_count(&self, inbox: i64) -> Result<i64>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Message,
             select = Summary::select()
                 .total(count())
@@ -59,7 +59,7 @@ pub mod store {
         )]
         fn summary(&self, inbox: i64) -> Result<Vec<Summary>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Message,
             joins = (Inbox.join_on(Message::inbox_id.eq_field(Inbox::id)),),
             filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false),
@@ -72,13 +72,13 @@ pub mod store {
         )]
         fn unread_digest(&self, inbox: i64) -> Result<Vec<UnreadDigest>>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Message::id.eq(message),
             set = (Message::is_read.set(true),),
         )]
         fn mark_read(&mut self, message: i64) -> Result<u64>;
 
-        #[lightshade::delete(filter = Message::sent_at.lt(cutoff))]
+        #[lightshadedb::delete(filter = Message::sent_at.lt(cutoff))]
         fn purge_before(&mut self, cutoff: i64) -> Result<u64>;
     }
 }

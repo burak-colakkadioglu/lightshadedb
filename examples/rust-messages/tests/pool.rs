@@ -1,10 +1,10 @@
 #![cfg(all(feature = "host", feature = "client", feature = "async"))]
 
-use lightshade::pool::PoolOptions;
-use lightshade::prelude::*;
-use lightshade::secret::{Credential, Role};
-use lightshade::table::Value;
-use lightshade::{ClientEndpoint, Credentials, CredentialsSource, ServeOptions};
+use lightshadedb::pool::PoolOptions;
+use lightshadedb::prelude::*;
+use lightshadedb::secret::{Credential, Role};
+use lightshadedb::table::Value;
+use lightshadedb::{ClientEndpoint, Credentials, CredentialsSource, ServeOptions};
 use rust_messages::store::{self, Db, Inbox, Message};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -20,7 +20,7 @@ fn credentials() -> Credentials {
 }
 
 fn pool_options() -> PoolOptions {
-    PoolOptions::new(lightshade::ClientCredentials::new(
+    PoolOptions::new(lightshadedb::ClientCredentials::new(
         "tester",
         "correct horse battery staple",
     ))
@@ -50,7 +50,7 @@ fn seed(db: &mut Db) {
 
 fn start_tcp(db: Db) -> store::Server {
     let mut options = ServeOptions::new(CredentialsSource::Static(credentials()));
-    options.listen = lightshade::net::Listen::tcp_local(0);
+    options.listen = lightshadedb::net::Listen::tcp_local(0);
     store::Server::start(db, options).unwrap()
 }
 
@@ -101,8 +101,8 @@ async fn pool_shares_one_client_across_tasks() {
 }
 
 fn scripted_peer(
-    script: Vec<lightshade::Error>,
-    finally: Option<Vec<lightshade::table::Value>>,
+    script: Vec<lightshadedb::Error>,
+    finally: Option<Vec<lightshadedb::table::Value>>,
 ) -> (
     std::net::SocketAddr,
     Arc<AtomicU64>,
@@ -136,7 +136,7 @@ fn scripted_peer(
             assert_eq!(kind, 0, "scripted peer only answers operations");
             counting.fetch_add(1, Ordering::Relaxed);
             let mut payload = vec![1u8];
-            lightshade::wire::put_error(&mut payload, &error);
+            lightshadedb::wire::put_error(&mut payload, &error);
             stream
                 .write_all(&(payload.len() as u32).to_le_bytes())
                 .unwrap();
@@ -154,9 +154,9 @@ fn scripted_peer(
         counting.fetch_add(1, Ordering::Relaxed);
         let mut payload = vec![0u8];
         let mut values = Vec::new();
-        lightshade::wire::put_u32(&mut values, ok.len() as u32);
+        lightshadedb::wire::put_u32(&mut values, ok.len() as u32);
         for value in &ok {
-            lightshade::wire::put_value(value, &mut values);
+            lightshadedb::wire::put_value(value, &mut values);
         }
         payload.extend_from_slice(&values);
         stream
@@ -170,14 +170,14 @@ fn scripted_peer(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pool_retries_retryable_errors_once_each() {
-    use lightshade::table::Value;
+    use lightshadedb::table::Value;
     let (addr, attempts, peer) =
-        scripted_peer(vec![lightshade::Error::Busy], Some(vec![Value::I64(42)]));
+        scripted_peer(vec![lightshadedb::Error::Busy], Some(vec![Value::I64(42)]));
     let endpoint = ClientEndpoint::tcp_db(addr.ip().to_string(), addr.port(), "default");
-    let pool = lightshade::pool::Pool::new(
+    let pool = lightshadedb::pool::Pool::new(
         endpoint,
         0,
-        PoolOptions::new(lightshade::ClientCredentials::new("tester", "secret")),
+        PoolOptions::new(lightshadedb::ClientCredentials::new("tester", "secret")),
     )
     .await
     .unwrap();
@@ -190,22 +190,22 @@ async fn pool_retries_retryable_errors_once_each() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn pool_surfaces_non_retryable_errors_without_repeating() {
     let (addr, attempts, peer) = scripted_peer(
-        vec![lightshade::Error::DuplicateKey {
+        vec![lightshadedb::Error::DuplicateKey {
             table: "widget".to_string(),
         }],
         None,
     );
     let endpoint = ClientEndpoint::tcp_db(addr.ip().to_string(), addr.port(), "default");
-    let pool = lightshade::pool::Pool::new(
+    let pool = lightshadedb::pool::Pool::new(
         endpoint,
         0,
-        PoolOptions::new(lightshade::ClientCredentials::new("tester", "secret")),
+        PoolOptions::new(lightshadedb::ClientCredentials::new("tester", "secret")),
     )
     .await
     .unwrap();
     let error = pool.request(0, &[]).await.unwrap_err();
     assert!(
-        matches!(error, lightshade::Error::DuplicateKey { .. }),
+        matches!(error, lightshadedb::Error::DuplicateKey { .. }),
         "{error:?}"
     );
     assert!(!error.is_retryable());
@@ -264,13 +264,13 @@ async fn bad_credentials_fail_eagerly_at_connect() {
     let addr = server.local_addr().expect("bound TCP address");
 
     let mut options = pool_options();
-    options.credentials = lightshade::ClientCredentials::new("tester", "wrong secret");
+    options.credentials = lightshadedb::ClientCredentials::new("tester", "wrong secret");
     let error = store::AsyncClient::connect_tcp(addr, options)
         .await
         .unwrap_err();
     assert!(matches!(
         error,
-        lightshade::Error::Auth(_) | lightshade::Error::Remote(_)
+        lightshadedb::Error::Auth(_) | lightshadedb::Error::Remote(_)
     ));
     server.join().unwrap();
 }

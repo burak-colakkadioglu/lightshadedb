@@ -7,12 +7,12 @@ storage, indexes, and query loops at compile time. No SQL strings, no
 runtime planner, no schema interpreter sitting on your hot path.
 
 ```rust
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Message {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub inbox_id: i64,
         pub sent_at: i64,
@@ -20,9 +20,9 @@ pub mod store {
         pub body: String,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Messages {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false),
             order = (Message::sent_at.desc(), Message::id.desc()),
             limit = limit,

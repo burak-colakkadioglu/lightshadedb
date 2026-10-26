@@ -1,7 +1,7 @@
 use super::ops::{operation_return, row_trait, OperationReturn};
 use crate::lower::LoweredSchema;
 use crate::model::{OperationKind, Schema};
-use lightshade_codegen::ir::Ty;
+use lightshadedb_codegen::ir::Ty;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Type;
@@ -25,8 +25,8 @@ pub(crate) fn decode_param(param: &crate::model::Param, index: usize) -> TokenSt
         Ty::Uuid => quote!(as_uuid),
     };
     quote! {
-        let #ident = ::lightshade::wire::#accessor(
-            ::lightshade::wire::param(params, #index)?
+        let #ident = ::lightshadedb::wire::#accessor(
+            ::lightshadedb::wire::param(params, #index)?
         )?;
     }
 }
@@ -64,12 +64,12 @@ pub(crate) fn server_wrapper(
         #[cfg(feature = "host")]
         pub struct Server {
             shutdown: ::std::sync::Arc<::std::sync::atomic::AtomicBool>,
-            thread: ::std::option::Option<::std::thread::JoinHandle<::lightshade::Result<()>>>,
+            thread: ::std::option::Option<::std::thread::JoinHandle<::lightshadedb::Result<()>>>,
             sync_workers: ::std::vec::Vec<::std::thread::JoinHandle<()>>,
             endpoint: ::std::path::PathBuf,
-            endpoint_value: ::lightshade::ClientEndpoint,
+            endpoint_value: ::lightshadedb::ClientEndpoint,
             local_addr: ::std::option::Option<::std::net::SocketAddr>,
-            network_access: ::lightshade::NetworkAccess,
+            network_access: ::lightshadedb::NetworkAccess,
         }
 
         #[cfg(feature = "host")]
@@ -80,10 +80,10 @@ pub(crate) fn server_wrapper(
 
         #[cfg(feature = "host")]
         impl Server {
-            pub fn start(db: Db, options: ::lightshade::ServeOptions) -> ::lightshade::Result<Self> {
+            pub fn start(db: Db, options: ::lightshadedb::ServeOptions) -> ::lightshadedb::Result<Self> {
                 Self::start_all(
                     ::std::vec![ServedDb {
-                        name: ::lightshade::DEFAULT_DATABASE.to_string(),
+                        name: ::lightshadedb::DEFAULT_DATABASE.to_string(),
                         db,
                     }],
                     options,
@@ -92,10 +92,10 @@ pub(crate) fn server_wrapper(
 
             pub fn start_all(
                 databases: Vec<ServedDb>,
-                options: ::lightshade::ServeOptions,
-            ) -> ::lightshade::Result<Self> {
+                options: ::lightshadedb::ServeOptions,
+            ) -> ::lightshadedb::Result<Self> {
                 if databases.is_empty() {
-                    return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                    return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                         name: "databases".to_string(),
                         reason: "at least one database is required".to_string(),
                     });
@@ -103,13 +103,13 @@ pub(crate) fn server_wrapper(
                 let mut seen = ::std::collections::HashSet::new();
                 for served in &databases {
                     if served.name.is_empty() {
-                        return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                        return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                             name: "database".to_string(),
                             reason: "database names must not be empty".to_string(),
                         });
                     }
                     if !seen.insert(served.name.clone()) {
-                        return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                        return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                             name: "database".to_string(),
                             reason: ::std::format!(
                                 "duplicate database name `{}`",
@@ -118,15 +118,15 @@ pub(crate) fn server_wrapper(
                         });
                     }
                     if served.db.path().as_os_str().is_empty() {
-                        return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                        return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                             name: "database".to_string(),
                             reason: "an in-memory database cannot be served".to_string(),
                         });
                     }
                 }
-                let base = ::lightshade::wire::load_credentials(&options.credentials)?;
+                let base = ::lightshadedb::wire::load_credentials(&options.credentials)?;
                 if base.is_empty() {
-                    return ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                    return ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                         name: "credentials".to_string(),
                         reason: "at least one credential is required".to_string(),
                     });
@@ -143,10 +143,10 @@ pub(crate) fn server_wrapper(
                     let credentials = match options.credentials_overrides.get(&served.name) {
                         ::std::option::Option::Some(source) => {
                             let loaded =
-                                ::lightshade::wire::load_credentials(source)?;
+                                ::lightshadedb::wire::load_credentials(source)?;
                             if loaded.is_empty() {
                                 return ::std::result::Result::Err(
-                                    ::lightshade::Error::InvalidArgument {
+                                    ::lightshadedb::Error::InvalidArgument {
                                         name: "credentials".to_string(),
                                         reason: ::std::format!(
                                             "at least one credential is required for database `{}`",
@@ -173,16 +173,16 @@ pub(crate) fn server_wrapper(
                         },
                     );
                 }
-                let bound = ::lightshade::wire::bind(&options.listen, &first_path)?;
+                let bound = ::lightshadedb::wire::bind(&options.listen, &first_path)?;
                 if let ::std::option::Option::Some(path) = &bound.endpoint_file {
-                    ::lightshade::wire::write_endpoint_file(path, &bound.endpoint)?;
+                    ::lightshadedb::wire::write_endpoint_file(path, &bound.endpoint)?;
                 }
                 let endpoint = match &bound.endpoint {
-                    ::lightshade::ClientEndpoint::Path(path) => path.clone(),
-                    ::lightshade::ClientEndpoint::Tcp { .. } => bound
+                    ::lightshadedb::ClientEndpoint::Path(path) => path.clone(),
+                    ::lightshadedb::ClientEndpoint::Tcp { .. } => bound
                         .endpoint_file
                         .clone()
-                        .unwrap_or_else(|| ::lightshade::wire::endpoint_path(&first_path)),
+                        .unwrap_or_else(|| ::lightshadedb::wire::endpoint_path(&first_path)),
                 };
                 let local_addr = bound.local_addr;
                 let network_access = bound.network_access;
@@ -195,7 +195,7 @@ pub(crate) fn server_wrapper(
                     while !flag.load(::std::sync::atomic::Ordering::SeqCst) {
                         match listener.accept() {
                             ::std::result::Result::Ok(mut stream) => {
-                                if !::lightshade::wire::allows_peer(access, &allow, &stream) {
+                                if !::lightshadedb::wire::allows_peer(access, &allow, &stream) {
                                     continue;
                                 }
                                 let _ = stream.set_timeout(::std::option::Option::Some(
@@ -213,7 +213,7 @@ pub(crate) fn server_wrapper(
                                 ::std::thread::sleep(::std::time::Duration::from_millis(20));
                             }
                             ::std::result::Result::Err(error) => {
-                                return ::std::result::Result::Err(::lightshade::Error::io(
+                                return ::std::result::Result::Err(::lightshadedb::Error::io(
                                     "accepting a connection",
                                     error,
                                 ));
@@ -237,7 +237,7 @@ pub(crate) fn server_wrapper(
                 &self.endpoint
             }
 
-            pub fn endpoint_value(&self) -> &::lightshade::ClientEndpoint {
+            pub fn endpoint_value(&self) -> &::lightshadedb::ClientEndpoint {
                 &self.endpoint_value
             }
 
@@ -245,7 +245,7 @@ pub(crate) fn server_wrapper(
                 self.local_addr
             }
 
-            pub fn network_access(&self) -> ::lightshade::NetworkAccess {
+            pub fn network_access(&self) -> ::lightshadedb::NetworkAccess {
                 self.network_access
             }
 
@@ -254,12 +254,12 @@ pub(crate) fn server_wrapper(
                     .store(true, ::std::sync::atomic::Ordering::SeqCst);
             }
 
-            pub fn join(mut self) -> ::lightshade::Result<()> {
+            pub fn join(mut self) -> ::lightshadedb::Result<()> {
                 self.shutdown();
                 let result = match self.thread.take() {
                     ::std::option::Option::Some(thread) => thread
                         .join()
-                        .map_err(|_| ::lightshade::Error::Failed {
+                        .map_err(|_| ::lightshadedb::Error::Failed {
                             reason: "server thread panicked".to_string(),
                         })?,
                     ::std::option::Option::None => ::std::result::Result::Ok(()),
@@ -282,66 +282,66 @@ pub(crate) fn server_wrapper(
         #[cfg(feature = "host")]
         struct __LsServed {
             db: ::std::sync::RwLock<Db>,
-            credentials: ::std::sync::Arc<::lightshade::Credentials>,
+            credentials: ::std::sync::Arc<::lightshadedb::Credentials>,
             fingerprint: u64,
         }
 
         #[cfg(feature = "host")]
         fn __ls_serve_connection(
-            mut stream: ::lightshade::wire::Stream,
+            mut stream: ::lightshadedb::wire::Stream,
             databases: ::std::sync::Arc<
                 ::std::collections::HashMap<String, __LsServed>,
             >,
             shutdown: ::std::sync::Arc<::std::sync::atomic::AtomicBool>,
         ) {
-            let hello = match ::lightshade::wire::read_hello(&mut stream) {
+            let hello = match ::lightshadedb::wire::read_hello(&mut stream) {
                 ::std::result::Result::Ok(hello) => hello,
                 ::std::result::Result::Err(error) => {
-                    let _ = ::lightshade::wire::write_handshake_error(&mut stream, &error);
+                    let _ = ::lightshadedb::wire::write_handshake_error(&mut stream, &error);
                     return;
                 }
             };
             let Some(entry) = databases.get(&hello.database) else {
-                let _ = ::lightshade::wire::write_handshake_error(
+                let _ = ::lightshadedb::wire::write_handshake_error(
                     &mut stream,
-                    &::lightshade::Error::Auth(::lightshade::AuthError::Failed),
+                    &::lightshadedb::Error::Auth(::lightshadedb::AuthError::Failed),
                 );
                 return;
             };
-            let role = match ::lightshade::wire::authenticate(
+            let role = match ::lightshadedb::wire::authenticate(
                 &hello,
                 entry.fingerprint,
                 &entry.credentials,
             ) {
                 ::std::result::Result::Ok(role) => role,
                 ::std::result::Result::Err(error) => {
-                    let _ = ::lightshade::wire::write_handshake_error(&mut stream, &error);
+                    let _ = ::lightshadedb::wire::write_handshake_error(&mut stream, &error);
                     return;
                 }
             };
-            if ::lightshade::wire::write_handshake_ok(&mut stream).is_err() {
+            if ::lightshadedb::wire::write_handshake_ok(&mut stream).is_err() {
                 return;
             }
             loop {
                 if shutdown.load(::std::sync::atomic::Ordering::SeqCst) {
                     return;
                 }
-                let (kind, index, params) = match ::lightshade::wire::read_request(&mut stream) {
+                let (kind, index, params) = match ::lightshadedb::wire::read_request(&mut stream) {
                     ::std::result::Result::Ok(request) => request,
-                    ::std::result::Result::Err(::lightshade::Error::Io { .. }) => return,
+                    ::std::result::Result::Err(::lightshadedb::Error::Io { .. }) => return,
                     ::std::result::Result::Err(error) => {
-                        let _ = ::lightshade::wire::write_response_error(&mut stream, &error);
+                        let _ = ::lightshadedb::wire::write_response_error(&mut stream, &error);
                         return;
                     }
                 };
-                let result = if kind == ::lightshade::wire::RequestKind::Operation
+                let result = if kind == ::lightshadedb::wire::RequestKind::Operation
                     && !role.can_write()
                     && __ls_is_write_operation(index)
                 {
-                    ::std::result::Result::Err(::lightshade::Error::Auth(
-                        ::lightshade::AuthError::PermissionDenied,
+                    ::std::result::Result::Err(::lightshadedb::Error::Auth(
+                        ::lightshadedb::AuthError::PermissionDenied,
                     ))
-                } else if kind == ::lightshade::wire::RequestKind::Operation
+                } else if kind == ::lightshadedb::wire::RequestKind::Operation
                     && !__ls_is_write_operation(index)
                 {
                     let db = match entry.db.read() {
@@ -357,16 +357,16 @@ pub(crate) fn server_wrapper(
                         };
                         let __ls_before = db.__ls_current_lsn();
                         let result = match kind {
-                            ::lightshade::wire::RequestKind::Operation => {
+                            ::lightshadedb::wire::RequestKind::Operation => {
                                 __ls_server_dispatch_write(&mut db, index, &params)
                             }
-                            ::lightshade::wire::RequestKind::Begin => {
+                            ::lightshadedb::wire::RequestKind::Begin => {
                                 db.begin().map(|()| ::std::vec::Vec::new())
                             }
-                            ::lightshade::wire::RequestKind::Commit => {
+                            ::lightshadedb::wire::RequestKind::Commit => {
                                 db.commit().map(|()| ::std::vec::Vec::new())
                             }
-                            ::lightshade::wire::RequestKind::Rollback => {
+                            ::lightshadedb::wire::RequestKind::Rollback => {
                                 db.rollback().map(|()| ::std::vec::Vec::new())
                             }
                         };
@@ -386,11 +386,11 @@ pub(crate) fn server_wrapper(
                         };
                         if let ::std::option::Option::Some(__ls_sync) = __ls_sync {
                             if let ::std::result::Result::Err(__ls_error) =
-                                __lightshade::__ls_wait_on_sync(&__ls_sync, __ls_lsn)
+                                __lightshadedb::__ls_wait_on_sync(&__ls_sync, __ls_lsn)
                             {
-                                let _ = ::lightshade::wire::write_response_error(
+                                let _ = ::lightshadedb::wire::write_response_error(
                                     &mut stream,
-                                    &::lightshade::Error::io(
+                                    &::lightshadedb::Error::io(
                                         "waiting for group commit",
                                         __ls_error,
                                     ),
@@ -403,12 +403,12 @@ pub(crate) fn server_wrapper(
                 };
                 match result {
                     ::std::result::Result::Ok(values) => {
-                        if ::lightshade::wire::write_response_ok(&mut stream, &values).is_err() {
+                        if ::lightshadedb::wire::write_response_ok(&mut stream, &values).is_err() {
                             return;
                         }
                     }
                     ::std::result::Result::Err(error) => {
-                        if ::lightshade::wire::write_response_error(&mut stream, &error).is_err() {
+                        if ::lightshadedb::wire::write_response_error(&mut stream, &error).is_err() {
                             return;
                         }
                     }
@@ -418,7 +418,7 @@ pub(crate) fn server_wrapper(
 
         #[cfg(feature = "host")]
         impl Db {
-            pub fn serve(self, options: ::lightshade::ServeOptions) -> ::lightshade::Result<()> {
+            pub fn serve(self, options: ::lightshadedb::ServeOptions) -> ::lightshadedb::Result<()> {
                 let server = Server::start(self, options)?;
                 server.join()
             }
@@ -481,16 +481,16 @@ pub(crate) fn server_dispatch(schema: &Schema, lowered: &LoweredSchema) -> Token
                                     .iter()
                                     .map(|row| <#row as #trait_>::to_values(row))
                                     .collect::<::std::vec::Vec<_>>();
-                                ::std::result::Result::Ok(::lightshade::wire::encode_rows(&rows))
+                                ::std::result::Result::Ok(::lightshadedb::wire::encode_rows(&rows))
                             }
                         }
                         OperationReturn::Count => quote! {
                             let value = db.#name(#(#args),*)?;
-                            ::std::result::Result::Ok(::std::vec![::lightshade::table::Value::I64(value)])
+                            ::std::result::Result::Ok(::std::vec![::lightshadedb::table::Value::I64(value)])
                         },
                         OperationReturn::Affected => quote! {
                             let value = db.#name(#(#args),*)?;
-                            ::std::result::Result::Ok(::std::vec![::lightshade::table::Value::U64(value)])
+                            ::std::result::Result::Ok(::std::vec![::lightshadedb::table::Value::U64(value)])
                         },
                     };
                     let read = matches!(
@@ -533,50 +533,50 @@ pub(crate) fn server_dispatch(schema: &Schema, lowered: &LoweredSchema) -> Token
                     let index = (base + table_index * 10 + slot) as u32;
                     let body = match slot {
                         0 => quote! {
-                            ::lightshade::Backend::__insert(db, #db_name, params.to_vec())?;
+                            ::lightshadedb::Backend::__insert(db, #db_name, params.to_vec())?;
                             ::std::result::Result::Ok(::std::vec::Vec::new())
                         },
                         1 => quote! {
-                            let rows = ::lightshade::wire::decode_rows(params.to_vec(), #width)?;
-                            ::lightshade::Backend::__insert_many(db, #db_name, rows)?;
+                            let rows = ::lightshadedb::wire::decode_rows(params.to_vec(), #width)?;
+                            ::lightshadedb::Backend::__insert_many(db, #db_name, rows)?;
                             ::std::result::Result::Ok(::std::vec::Vec::new())
                         },
                         2 => quote! {
-                            let inserted = ::lightshade::Backend::__upsert(db, #db_name, params.to_vec())?;
-                            ::std::result::Result::Ok(::std::vec![::lightshade::table::Value::Bool(inserted)])
+                            let inserted = ::lightshadedb::Backend::__upsert(db, #db_name, params.to_vec())?;
+                            ::std::result::Result::Ok(::std::vec![::lightshadedb::table::Value::Bool(inserted)])
                         },
                         3 => quote! {
-                            let rows = ::lightshade::wire::decode_rows(params.to_vec(), #width)?;
-                            let inserted = ::lightshade::Backend::__upsert_many(db, #db_name, rows)?;
-                            ::std::result::Result::Ok(::std::vec![::lightshade::table::Value::U64(inserted)])
+                            let rows = ::lightshadedb::wire::decode_rows(params.to_vec(), #width)?;
+                            let inserted = ::lightshadedb::Backend::__upsert_many(db, #db_name, rows)?;
+                            ::std::result::Result::Ok(::std::vec![::lightshadedb::table::Value::U64(inserted)])
                         },
                         4 => quote! {
-                            let row = ::lightshade::Backend::__get(db, #db_name, params[0].clone())?;
-                            let mut values = ::std::vec![::lightshade::table::Value::U8(row.is_some() as u8)];
+                            let row = ::lightshadedb::Backend::__get(db, #db_name, params[0].clone())?;
+                            let mut values = ::std::vec![::lightshadedb::table::Value::U8(row.is_some() as u8)];
                             if let ::std::option::Option::Some(row) = row {
                                 values.extend(row);
                             }
                             ::std::result::Result::Ok(values)
                         },
                         5 => quote! {
-                            let contains = ::lightshade::Backend::__contains(db, #db_name, params[0].clone())?;
-                            ::std::result::Result::Ok(::std::vec![::lightshade::table::Value::Bool(contains)])
+                            let contains = ::lightshadedb::Backend::__contains(db, #db_name, params[0].clone())?;
+                            ::std::result::Result::Ok(::std::vec![::lightshadedb::table::Value::Bool(contains)])
                         },
                         6 => quote! {
-                            let updated = ::lightshade::Backend::__update(db, #db_name, params.to_vec())?;
-                            ::std::result::Result::Ok(::std::vec![::lightshade::table::Value::Bool(updated)])
+                            let updated = ::lightshadedb::Backend::__update(db, #db_name, params.to_vec())?;
+                            ::std::result::Result::Ok(::std::vec![::lightshadedb::table::Value::Bool(updated)])
                         },
                         7 => quote! {
-                            let deleted = ::lightshade::Backend::__delete(db, #db_name, params[0].clone())?;
-                            ::std::result::Result::Ok(::std::vec![::lightshade::table::Value::Bool(deleted)])
+                            let deleted = ::lightshadedb::Backend::__delete(db, #db_name, params[0].clone())?;
+                            ::std::result::Result::Ok(::std::vec![::lightshadedb::table::Value::Bool(deleted)])
                         },
                         8 => quote! {
-                            let count = ::lightshade::Backend::__count(db, #db_name)?;
-                            ::std::result::Result::Ok(::std::vec![::lightshade::table::Value::U64(count)])
+                            let count = ::lightshadedb::Backend::__count(db, #db_name)?;
+                            ::std::result::Result::Ok(::std::vec![::lightshadedb::table::Value::U64(count)])
                         },
                         9 => quote! {
-                            let rows = ::lightshade::Backend::__scan(db, #db_name)?;
-                            ::std::result::Result::Ok(::lightshade::wire::encode_rows(&rows))
+                            let rows = ::lightshadedb::Backend::__scan(db, #db_name)?;
+                            ::std::result::Result::Ok(::lightshadedb::wire::encode_rows(&rows))
                         },
                         _ => unreachable!(),
                     };
@@ -609,12 +609,12 @@ pub(crate) fn server_dispatch(schema: &Schema, lowered: &LoweredSchema) -> Token
         fn __ls_server_dispatch_read(
             db: &Db,
             index: u32,
-            params: &[::lightshade::table::Value],
-        ) -> ::lightshade::Result<::std::vec::Vec<::lightshade::table::Value>> {
+            params: &[::lightshadedb::table::Value],
+        ) -> ::lightshadedb::Result<::std::vec::Vec<::lightshadedb::table::Value>> {
             match index {
                 #(#user_read_arms)*
                 #(#crud_read_arms,)*
-                other => ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                other => ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                     name: "operation".to_string(),
                     reason: ::std::format!("unknown operation index {other}"),
                 }),
@@ -625,12 +625,12 @@ pub(crate) fn server_dispatch(schema: &Schema, lowered: &LoweredSchema) -> Token
         fn __ls_server_dispatch_write(
             db: &mut Db,
             index: u32,
-            params: &[::lightshade::table::Value],
-        ) -> ::lightshade::Result<::std::vec::Vec<::lightshade::table::Value>> {
+            params: &[::lightshadedb::table::Value],
+        ) -> ::lightshadedb::Result<::std::vec::Vec<::lightshadedb::table::Value>> {
             match index {
                 #(#user_write_arms)*
                 #(#crud_write_arms,)*
-                other => ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                other => ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                     name: "operation".to_string(),
                     reason: ::std::format!("unknown operation index {other}"),
                 }),

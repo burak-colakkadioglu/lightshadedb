@@ -2,38 +2,38 @@ use compat_store::{Db, Widget};
 use std::path::Path;
 use std::process::Command;
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod compat_store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Widget {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub name: String,
         pub score: i64,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait WidgetOps {
-        #[lightshade::query(filter = Widget::id.eq(id))]
+        #[lightshadedb::query(filter = Widget::id.eq(id))]
         fn by_id(&self, id: i64) -> Result<Vec<Widget>>;
     }
 }
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod nullable_store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Widget {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub name: Option<String>,
         pub score: i64,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait NullableWidgetOps {
-        #[lightshade::query(filter = Widget::id.eq(id))]
+        #[lightshadedb::query(filter = Widget::id.eq(id))]
         fn by_id(&self, id: i64) -> Result<Vec<Widget>>;
     }
 }
@@ -41,9 +41,9 @@ pub mod nullable_store {
 const COMPAT_WORKLOAD: &str = "table widget {\n    id: i64 primary_key\n    name: text\n    score: i64\n}\noperation get_widget(wanted: i64) -> many widget {\n    filter id == wanted\n    limit 1\n}\n";
 
 fn interface_binary(workload: &str, out: &Path) {
-    let parsed = lightshade_codegen::ir::parse_workload(workload).unwrap();
-    lightshade_codegen::ir::validate(&parsed).unwrap();
-    let source = lightshade_codegen::compiler::generate_interface(&parsed).unwrap();
+    let parsed = lightshadedb_codegen::ir::parse_workload(workload).unwrap();
+    lightshadedb_codegen::ir::validate(&parsed).unwrap();
+    let source = lightshadedb_codegen::compiler::generate_interface(&parsed).unwrap();
     let rs = out.with_extension("rs");
     std::fs::write(&rs, source).unwrap();
     let status = Command::new("rustc")

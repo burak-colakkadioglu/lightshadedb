@@ -1,4 +1,4 @@
-use lightshade_codegen::registry::{
+use lightshadedb_codegen::registry::{
     field_name, parse_registry, split_listen, DatabaseEntry, Registry, RegistryMode,
 };
 use proc_macro2::TokenStream;
@@ -78,10 +78,10 @@ fn open_entry(entry: &DatabaseEntry) -> syn::Result<TokenStream> {
                         db: #schema::Db::open(#path)?,
                     }],
                     {
-                        let mut options = ::lightshade::ServeOptions::new(
-                            ::lightshade::CredentialsSource::File(#credentials.into()),
+                        let mut options = ::lightshadedb::ServeOptions::new(
+                            ::lightshadedb::CredentialsSource::File(#credentials.into()),
                         );
-                        options.listen = ::lightshade::Listen::parse_tcp(#listen, #access.parse()?)?;
+                        options.listen = ::lightshadedb::Listen::parse_tcp(#listen, #access.parse()?)?;
                         options.listen = options.listen.with_allowlist(&[#(#allow,)*])?;
                         options
                     },
@@ -98,10 +98,10 @@ fn open_entry(entry: &DatabaseEntry) -> syn::Result<TokenStream> {
             );
             quote! {
                 #schema::App::open(#schema::AppConfig::client(
-                    ::lightshade::ClientEndpoint::parse(#endpoint)?,
-                    ::lightshade::ClientOptions::new(::lightshade::ClientCredentials::new(
+                    ::lightshadedb::ClientEndpoint::parse(#endpoint)?,
+                    ::lightshadedb::ClientOptions::new(::lightshadedb::ClientCredentials::new(
                         #id,
-                        ::std::env::var(#secret).map_err(|_| ::lightshade::Error::InvalidArgument {
+                        ::std::env::var(#secret).map_err(|_| ::lightshadedb::Error::InvalidArgument {
                             name: #secret.into(),
                             reason: #secret_missing.into(),
                         })?,
@@ -151,8 +151,8 @@ fn from_env_entry(entry: &DatabaseEntry) -> syn::Result<TokenStream> {
                         )?,
                     }],
                     {
-                        let mut options = ::lightshade::ServeOptions::new(
-                            ::lightshade::CredentialsSource::File(
+                        let mut options = ::lightshadedb::ServeOptions::new(
+                            ::lightshadedb::CredentialsSource::File(
                                 ::std::env::var(#creds_var)
                                     .unwrap_or_else(|_| #fallback_creds.to_string())
                                     .into(),
@@ -161,7 +161,7 @@ fn from_env_entry(entry: &DatabaseEntry) -> syn::Result<TokenStream> {
                         let listen = ::std::env::var(#listen_var).unwrap_or_else(|_| #fallback_listen.to_string());
                         let allow = ::std::env::var(#allow_var).unwrap_or_else(|_| #fallback_allow.to_string());
                         let allow: ::std::vec::Vec<&str> = allow.split(',').filter(|entry| !entry.trim().is_empty()).collect();
-                        options.listen = ::lightshade::Listen::parse_tcp(&listen, #access.parse()?)?;
+                        options.listen = ::lightshadedb::Listen::parse_tcp(&listen, #access.parse()?)?;
                         options.listen = options.listen.with_allowlist(&allow)?;
                         options
                     },
@@ -179,12 +179,12 @@ fn from_env_entry(entry: &DatabaseEntry) -> syn::Result<TokenStream> {
             );
             quote! {
                 #schema::App::open(#schema::AppConfig::client(
-                    ::lightshade::ClientEndpoint::parse(
+                    ::lightshadedb::ClientEndpoint::parse(
                         &::std::env::var(#endpoint_var).unwrap_or_else(|_| #fallback.to_string()),
                     )?,
-                    ::lightshade::ClientOptions::new(::lightshade::ClientCredentials::new(
+                    ::lightshadedb::ClientOptions::new(::lightshadedb::ClientCredentials::new(
                         #id,
-                        ::std::env::var(#secret_var).map_err(|_| ::lightshade::Error::InvalidArgument {
+                        ::std::env::var(#secret_var).map_err(|_| ::lightshadedb::Error::InvalidArgument {
                             name: #secret_var.into(),
                             reason: #secret_missing.into(),
                         })?,
@@ -270,19 +270,19 @@ fn expand_registry(registry: &Registry) -> syn::Result<TokenStream> {
         pub const IDS: &[&str] = &[#(#ids,)*];
 
         impl Databases {
-            pub fn open_all() -> ::lightshade::Result<Self> {
+            pub fn open_all() -> ::lightshadedb::Result<Self> {
                 Ok(Self {
                     #(#opens)*
                 })
             }
 
-            pub fn from_env_all() -> ::lightshade::Result<Self> {
+            pub fn from_env_all() -> ::lightshadedb::Result<Self> {
                 Ok(Self {
                     #(#envs)*
                 })
             }
 
-            pub fn close_all(self) -> ::lightshade::Result<()> {
+            pub fn close_all(self) -> ::lightshadedb::Result<()> {
                 #(#closes)*
                 ::std::result::Result::Ok(())
             }

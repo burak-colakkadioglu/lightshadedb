@@ -10,5 +10,5 @@ build-dir = "book"
 create-missing = false
 
 [output.html]
-git-repository-url = "https://example.invalid/lightshade"
-edit-url-template = "https://example.invalid/lightshade/edit/main/docs/{path}"
+git-repository-url = "https://github.com/burak-colakkadioglu/lightshadedb"
+edit-url-template = "https://github.com/burak-colakkadioglu/lightshadedb/edit/main/docs/{path}"

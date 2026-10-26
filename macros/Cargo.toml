@@ -1,14 +1,16 @@
 [package]
-name = "lightshade-macros"
+name = "lightshadedb-macros"
 version.workspace = true
 edition.workspace = true
-description = "Rust-native schema and operation macros for Lightshade."
+license.workspace = true
+repository.workspace = true
+description = "Rust-native schema and operation macros for Lightshade DB."
 
 [lib]
 proc-macro = true
 
 [dependencies]
-lightshade-codegen = { workspace = true }
+lightshadedb-codegen = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }

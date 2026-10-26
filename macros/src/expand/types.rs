@@ -1,24 +1,24 @@
-use lightshade_codegen::ir::Ty;
+use lightshadedb_codegen::ir::Ty;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::Ident;
 
 pub(crate) fn field_type_tokens(ty: Ty) -> TokenStream {
     match ty {
-        Ty::I8 => quote!(::lightshade::FieldType::I8),
-        Ty::I16 => quote!(::lightshade::FieldType::I16),
-        Ty::I32 => quote!(::lightshade::FieldType::I32),
-        Ty::I64 => quote!(::lightshade::FieldType::I64),
-        Ty::U8 => quote!(::lightshade::FieldType::U8),
-        Ty::U16 => quote!(::lightshade::FieldType::U16),
-        Ty::U32 => quote!(::lightshade::FieldType::U32),
-        Ty::U64 => quote!(::lightshade::FieldType::U64),
-        Ty::F32 => quote!(::lightshade::FieldType::F32),
-        Ty::F64 => quote!(::lightshade::FieldType::F64),
-        Ty::Bool => quote!(::lightshade::FieldType::Bool),
-        Ty::Text => quote!(::lightshade::FieldType::Text),
-        Ty::Bytes => quote!(::lightshade::FieldType::Bytes),
-        Ty::Uuid => quote!(::lightshade::FieldType::Uuid),
+        Ty::I8 => quote!(::lightshadedb::FieldType::I8),
+        Ty::I16 => quote!(::lightshadedb::FieldType::I16),
+        Ty::I32 => quote!(::lightshadedb::FieldType::I32),
+        Ty::I64 => quote!(::lightshadedb::FieldType::I64),
+        Ty::U8 => quote!(::lightshadedb::FieldType::U8),
+        Ty::U16 => quote!(::lightshadedb::FieldType::U16),
+        Ty::U32 => quote!(::lightshadedb::FieldType::U32),
+        Ty::U64 => quote!(::lightshadedb::FieldType::U64),
+        Ty::F32 => quote!(::lightshadedb::FieldType::F32),
+        Ty::F64 => quote!(::lightshadedb::FieldType::F64),
+        Ty::Bool => quote!(::lightshadedb::FieldType::Bool),
+        Ty::Text => quote!(::lightshadedb::FieldType::Text),
+        Ty::Bytes => quote!(::lightshadedb::FieldType::Bytes),
+        Ty::Uuid => quote!(::lightshadedb::FieldType::Uuid),
     }
 }
 

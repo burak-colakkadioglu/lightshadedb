@@ -2,7 +2,7 @@
 
 use rust_messages::store::{self, Inbox, Message};
 
-lightshade::registry!("lightshade.toml");
+lightshadedb::registry!("lightshade.toml");
 
 fn set_var(name: &str, value: &std::path::Path) {
     unsafe {

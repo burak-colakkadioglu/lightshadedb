@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # App 1: the network host. It owns the database file and serves typed
-# operations to connected clients over the Lightshade wire protocol.
+# operations to connected clients over the Lightshade DB wire protocol.
 set -euo pipefail
 
 app_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

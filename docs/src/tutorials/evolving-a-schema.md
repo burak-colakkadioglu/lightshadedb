@@ -9,7 +9,7 @@ Add a field, rename something, add a table:
 
 ```rust
 pub struct Message {
-    #[lightshade(primary_key)]
+    #[lightshadedb(primary_key)]
     pub id: i64,
     pub inbox_id: i64,
     pub sent_at: i64,

@@ -276,12 +276,12 @@ fn init_scaffolds_a_rust_native_project_and_refuses_overwrite() {
     let manifest = fs::read_to_string(project.join("Cargo.toml")).unwrap();
     assert!(manifest.contains("name = \"demo\""));
     assert!(manifest.contains("default = [\"host\", \"embedded\"]"));
-    assert!(manifest.contains("host = [\"embedded\", \"lightshade/host\"]"));
-    assert!(manifest.contains("client = [\"lightshade/client\"]"));
+    assert!(manifest.contains("host = [\"embedded\", \"lightshadedb/host\"]"));
+    assert!(manifest.contains("client = [\"lightshadedb/client\"]"));
     assert!(manifest.contains("default-features = false"));
     let source = fs::read_to_string(project.join("src/main.rs")).unwrap();
-    assert!(source.contains("#[lightshade::schema]"));
-    assert!(source.contains("#[lightshade::operations]"));
+    assert!(source.contains("#[lightshadedb::schema]"));
+    assert!(source.contains("#[lightshadedb::operations]"));
     assert!(source.contains("AppConfig::embedded"));
     assert!(!project.join("README.md").exists());
 

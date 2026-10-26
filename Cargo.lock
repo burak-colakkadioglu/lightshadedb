@@ -938,11 +938,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "lightshade"
+name = "lightshadedb"
 version = "2.0.0"
 dependencies = [
- "lightshade-codegen",
- "lightshade-macros",
+ "lightshadedb-codegen",
+ "lightshadedb-macros",
  "sha2 0.10.9",
  "subtle",
  "tempfile",
@@ -952,17 +952,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "lightshade-codegen"
+name = "lightshadedb-codegen"
 version = "2.0.0"
 dependencies = [
  "toml",
 ]
 
 [[package]]
-name = "lightshade-macros"
+name = "lightshadedb-macros"
 version = "2.0.0"
 dependencies = [
- "lightshade-codegen",
+ "lightshadedb-codegen",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -999,7 +999,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 name = "ls-bench"
 version = "0.1.0"
 dependencies = [
- "lightshade",
+ "lightshadedb",
  "postgres",
  "postgresql_embedded",
  "redb",
@@ -1541,7 +1541,7 @@ dependencies = [
 name = "rust-messages"
 version = "0.1.0"
 dependencies = [
- "lightshade",
+ "lightshadedb",
  "tempfile",
  "tokio",
 ]
@@ -1550,8 +1550,8 @@ dependencies = [
 name = "rust-suite"
 version = "0.1.0"
 dependencies = [
- "lightshade",
- "lightshade-codegen",
+ "lightshadedb",
+ "lightshadedb-codegen",
 ]
 
 [[package]]

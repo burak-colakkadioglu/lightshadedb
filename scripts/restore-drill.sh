@@ -19,7 +19,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ ! -x "$CLI" ]]; then
-    cargo build --release -p lightshade --bin lightshade
+    cargo build --release -p lightshadedb --bin lightshade
 fi
 mkdir -p "$WORK"
 

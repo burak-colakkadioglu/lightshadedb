@@ -19,7 +19,7 @@ fn open_migrated_maps_old_snapshots_by_name() {
     let type_binary = compile(TYPE_OLD, TYPE_HARNESS, "migration-type");
 
     let directory = std::env::temp_dir().join(format!(
-        "lightshade-codegen-{}-{}",
+        "lightshadedb-codegen-{}-{}",
         std::process::id(),
         "migration"
     ));

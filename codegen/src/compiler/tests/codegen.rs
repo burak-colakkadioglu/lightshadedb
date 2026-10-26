@@ -179,7 +179,7 @@ fn main() {
 
     let source = format!("{}\n{HARNESS}", generate_library(&workload).unwrap());
     let dir = std::env::temp_dir().join(format!(
-        "lightshade-codegen-{}-{}",
+        "lightshadedb-codegen-{}-{}",
         std::process::id(),
         "non_demo"
     ));

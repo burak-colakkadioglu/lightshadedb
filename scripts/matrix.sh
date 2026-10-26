@@ -26,12 +26,12 @@ check() {
 }
 
 echo "== facade feature combinations =="
-check "lightshade/no-default"        cargo check -q -p lightshade --no-default-features
-check "lightshade/client-only"        cargo check -q -p lightshade --no-default-features --features client
-check "lightshade/embedded"           cargo check -q -p lightshade --no-default-features --features embedded
-check "lightshade/host"               cargo check -q -p lightshade --no-default-features --features host
-check "lightshade/host+client"        cargo check -q -p lightshade --no-default-features --features host,client
-check "lightshade/all-features"       cargo check -q -p lightshade --all-features
+check "lightshade/no-default"        cargo check -q -p lightshadedb --no-default-features
+check "lightshade/client-only"        cargo check -q -p lightshadedb --no-default-features --features client
+check "lightshade/embedded"           cargo check -q -p lightshadedb --no-default-features --features embedded
+check "lightshade/host"               cargo check -q -p lightshadedb --no-default-features --features host
+check "lightshade/host+client"        cargo check -q -p lightshadedb --no-default-features --features host,client
+check "lightshade/all-features"       cargo check -q -p lightshadedb --all-features
 
 echo "== application feature combinations =="
 check "rust-messages/embedded"        cargo check -q -p rust-messages
@@ -41,7 +41,7 @@ check "rust-messages/host+client"     cargo check -q -p rust-messages --features
 check "rust-messages/async"           cargo check -q -p rust-messages --no-default-features --features host,client,async
 check "rust-suite/embedded"           cargo check -q -p rust-suite
 check "rust-suite/host+client"        cargo check -q -p rust-suite --features host,client
-check "lightshade/bin"                cargo check -q -p lightshade --bin lightshade
+check "lightshade/bin"                cargo check -q -p lightshadedb --bin lightshade
 
 if [[ "$RUN_TESTS" == "1" ]]; then
     echo "== mode test suites =="
@@ -50,7 +50,7 @@ if [[ "$RUN_TESTS" == "1" ]]; then
     check "test:host+client"          cargo test -q -p rust-messages --features host,client
     check "test:async"                cargo test -q -p rust-messages --no-default-features --features host,client,async
     check "test:equivalence"          cargo test -q -p rust-suite
-    check "test:facade"               cargo test -q -p lightshade --all-features
+    check "test:facade"               cargo test -q -p lightshadedb --all-features
 fi
 
 echo "== $pass passed, $fail failed =="

@@ -1,5 +1,5 @@
-use lightshade_codegen::compiler::generate;
-use lightshade_codegen::ir::{Body, Returns};
+use lightshadedb_codegen::compiler::generate;
+use lightshadedb_codegen::ir::{Body, Returns};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -405,17 +405,17 @@ pub(crate) fn cmd_init(args: &[String]) -> Result<(), CliError> {
     let source = directory.join("src").join("main.rs");
     if !force && (manifest.exists() || source.exists()) {
         return Err(CliError::from(format!(
-            "`{destination}` already contains a Lightshade scaffold; pass `--force` to overwrite"
+            "`{destination}` already contains a Lightshade DB scaffold; pass `--force` to overwrite"
         )));
     }
     fs::create_dir_all(directory.join("src")).map_err(|error| error.to_string())?;
     let dependency = match dependency_path {
         Some(path) => format!(
-            "lightshade = {{ path = {:?}, default-features = false }}",
+            "lightshadedb = {{ path = {:?}, default-features = false }}",
             path
         ),
         None => format!(
-            "lightshade = {{ version = {:?}, default-features = false }}",
+            "lightshadedb = {{ version = {:?}, default-features = false }}",
             env!("CARGO_PKG_VERSION")
         ),
     };
@@ -436,9 +436,9 @@ publish = false
 
 [features]
 default = [{default_features}]
-embedded = ["lightshade/embedded"]
-host = ["embedded", "lightshade/host"]
-client = ["lightshade/client"]
+embedded = ["lightshadedb/embedded"]
+host = ["embedded", "lightshadedb/host"]
+client = ["lightshadedb/client"]
 "#
     );
     fs::write(&manifest, manifest_text).map_err(|error| error.to_string())?;
@@ -468,22 +468,22 @@ fn sanitize_crate_name(name: &str) -> Result<String, CliError> {
     Ok(out)
 }
 fn scaffold_source() -> &'static str {
-    r#"use lightshade::prelude::*;
+    r#"use lightshadedb::prelude::*;
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub title: String,
         pub done: bool,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Note::done.eq(false),
             order = Note::id.asc(),
         )]
@@ -491,10 +491,10 @@ pub mod store {
     }
 }
 
-fn run(app: &mut impl store::Backend) -> lightshade::Result<()> {
+fn run(app: &mut impl store::Backend) -> lightshadedb::Result<()> {
     app.insert(store::Note {
         id: 1,
-        title: "Try Lightshade".into(),
+        title: "Try Lightshade DB".into(),
         done: false,
     })?;
     let notes = app.open_notes()?;
@@ -503,13 +503,13 @@ fn run(app: &mut impl store::Backend) -> lightshade::Result<()> {
 }
 
 #[cfg(feature = "embedded")]
-fn main() -> lightshade::Result<()> {
+fn main() -> lightshadedb::Result<()> {
     let mut app = store::App::open(store::AppConfig::embedded("notes.lsdb"))?;
     run(&mut app)
 }
 
 #[cfg(all(feature = "client", not(feature = "embedded")))]
-fn main() -> lightshade::Result<()> {
+fn main() -> lightshadedb::Result<()> {
     let mut app = store::App::from_env()?;
     run(&mut app)
 }

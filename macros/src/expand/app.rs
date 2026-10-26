@@ -7,9 +7,9 @@ use super::ops::operation_trait_impls;
 pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStream {
     let trait_bound = if let Some(operations) = &schema.operations {
         let ident = &operations.ident;
-        quote!(#ident + ::lightshade::Backend)
+        quote!(#ident + ::lightshadedb::Backend)
     } else {
-        quote!(::lightshade::Backend)
+        quote!(::lightshadedb::Backend)
     };
     let operation_impls = if let Some(operations) = &schema.operations {
         let impls = operations
@@ -63,12 +63,12 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
             #[cfg(feature = "embedded")]
             Embedded {
                 path: ::std::path::PathBuf,
-                options: ::lightshade::OpenOptions,
+                options: ::lightshadedb::OpenOptions,
             },
             #[cfg(feature = "client")]
             Client {
-                endpoint: ::lightshade::ClientEndpoint,
-                options: ::lightshade::ClientOptions,
+                endpoint: ::lightshadedb::ClientEndpoint,
+                options: ::lightshadedb::ClientOptions,
             },
         }
 
@@ -77,21 +77,21 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
             pub fn embedded(path: impl ::std::convert::Into<::std::path::PathBuf>) -> Self {
                 Self::Embedded {
                     path: path.into(),
-                    options: ::lightshade::OpenOptions::default(),
+                    options: ::lightshadedb::OpenOptions::default(),
                 }
             }
 
             #[cfg(feature = "client")]
             pub fn client(
-                endpoint: ::lightshade::ClientEndpoint,
-                options: ::lightshade::ClientOptions,
+                endpoint: ::lightshadedb::ClientEndpoint,
+                options: ::lightshadedb::ClientOptions,
             ) -> Self {
                 Self::Client { endpoint, options }
             }
         }
 
         impl App {
-            pub fn open(config: AppConfig) -> ::lightshade::Result<App> {
+            pub fn open(config: AppConfig) -> ::lightshadedb::Result<App> {
                 match config {
                     #[cfg(feature = "embedded")]
                     AppConfig::Embedded { path, options } => {
@@ -106,7 +106,7 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                 }
             }
 
-            pub fn from_env() -> ::lightshade::Result<App> {
+            pub fn from_env() -> ::lightshadedb::Result<App> {
                 let mode = ::std::env::var("LIGHTSHADE_MODE").unwrap_or_else(|_| {
                     #[cfg(feature = "embedded")]
                     {
@@ -121,7 +121,7 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                     #[cfg(feature = "embedded")]
                     "embedded" => {
                         let path = ::std::env::var("LIGHTSHADE_PATH").map_err(|_| {
-                            ::lightshade::Error::InvalidArgument {
+                            ::lightshadedb::Error::InvalidArgument {
                                 name: "LIGHTSHADE_PATH".to_string(),
                                 reason: "is not set".to_string(),
                             }
@@ -131,18 +131,18 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                     #[cfg(feature = "client")]
                     "client" => {
                         let endpoint = ::std::env::var("LIGHTSHADE_ENDPOINT").map_err(|_| {
-                            ::lightshade::Error::InvalidArgument {
+                            ::lightshadedb::Error::InvalidArgument {
                                 name: "LIGHTSHADE_ENDPOINT".to_string(),
                                 reason: "is not set".to_string(),
                             }
                         })?;
-                        let endpoint = ::lightshade::ClientEndpoint::parse(&endpoint)?;
-                        let options = ::lightshade::ClientOptions::from_env()?;
+                        let endpoint = ::lightshadedb::ClientEndpoint::parse(&endpoint)?;
+                        let options = ::lightshadedb::ClientOptions::from_env()?;
                         ::std::result::Result::Ok(App::Client(Client::connect_endpoint(
                             endpoint, options,
                         )?))
                     }
-                    other => ::std::result::Result::Err(::lightshade::Error::InvalidArgument {
+                    other => ::std::result::Result::Err(::lightshadedb::Error::InvalidArgument {
                         name: "LIGHTSHADE_MODE".to_string(),
                         reason: ::std::format!("unsupported mode `{other}`"),
                     }),
@@ -158,7 +158,7 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                 }
             }
 
-            pub fn client_endpoint(&self) -> ::std::option::Option<&::lightshade::ClientEndpoint> {
+            pub fn client_endpoint(&self) -> ::std::option::Option<&::lightshadedb::ClientEndpoint> {
                 match self {
                     #[cfg(feature = "embedded")]
                     App::Embedded(_) => ::std::option::Option::None,
@@ -185,7 +185,7 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                 }
             }
 
-            pub fn begin(&mut self) -> ::lightshade::Result<()> {
+            pub fn begin(&mut self) -> ::lightshadedb::Result<()> {
                 match self {
                     #[cfg(feature = "embedded")]
                     App::Embedded(db) => db.begin(),
@@ -194,7 +194,7 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                 }
             }
 
-            pub fn commit(&mut self) -> ::lightshade::Result<()> {
+            pub fn commit(&mut self) -> ::lightshadedb::Result<()> {
                 match self {
                     #[cfg(feature = "embedded")]
                     App::Embedded(db) => db.commit(),
@@ -203,7 +203,7 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                 }
             }
 
-            pub fn rollback(&mut self) -> ::lightshade::Result<()> {
+            pub fn rollback(&mut self) -> ::lightshadedb::Result<()> {
                 match self {
                     #[cfg(feature = "embedded")]
                     App::Embedded(db) => db.rollback(),
@@ -214,8 +214,8 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
 
             pub fn transaction<T>(
                 &mut self,
-                f: impl ::std::ops::FnOnce(&mut App) -> ::lightshade::Result<T>,
-            ) -> ::lightshade::Result<T> {
+                f: impl ::std::ops::FnOnce(&mut App) -> ::lightshadedb::Result<T>,
+            ) -> ::lightshadedb::Result<T> {
                 self.begin()?;
                 let outcome = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| f(self)));
                 match outcome {
@@ -234,89 +234,89 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                 }
             }
 
-            pub fn insert<T: ::lightshade::Table>(&mut self, row: T) -> ::lightshade::Result<()> {
-                ::lightshade::Backend::insert(self, row)
+            pub fn insert<T: ::lightshadedb::Table>(&mut self, row: T) -> ::lightshadedb::Result<()> {
+                ::lightshadedb::Backend::insert(self, row)
             }
 
-            pub fn insert_many<T: ::lightshade::Table>(
+            pub fn insert_many<T: ::lightshadedb::Table>(
                 &mut self,
                 rows: impl ::std::iter::IntoIterator<Item = T>,
-            ) -> ::lightshade::Result<()> {
-                ::lightshade::Backend::insert_many(self, rows)
+            ) -> ::lightshadedb::Result<()> {
+                ::lightshadedb::Backend::insert_many(self, rows)
             }
 
-            pub fn upsert<T: ::lightshade::Table>(&mut self, row: T) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::upsert(self, row)
+            pub fn upsert<T: ::lightshadedb::Table>(&mut self, row: T) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::upsert(self, row)
             }
 
-            pub fn upsert_many<T: ::lightshade::Table>(
+            pub fn upsert_many<T: ::lightshadedb::Table>(
                 &mut self,
                 rows: impl ::std::iter::IntoIterator<Item = T>,
-            ) -> ::lightshade::Result<u64> {
-                ::lightshade::Backend::upsert_many(self, rows)
+            ) -> ::lightshadedb::Result<u64> {
+                ::lightshadedb::Backend::upsert_many(self, rows)
             }
 
-            pub fn get<T: ::lightshade::Table>(
+            pub fn get<T: ::lightshadedb::Table>(
                 &self,
                 key: T::Key,
-            ) -> ::lightshade::Result<::std::option::Option<T>> {
-                ::lightshade::Backend::get::<T>(self, key)
+            ) -> ::lightshadedb::Result<::std::option::Option<T>> {
+                ::lightshadedb::Backend::get::<T>(self, key)
             }
 
-            pub fn contains<T: ::lightshade::Table>(
+            pub fn contains<T: ::lightshadedb::Table>(
                 &self,
                 key: &T::Key,
-            ) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::contains::<T>(self, key)
+            ) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::contains::<T>(self, key)
             }
 
-            pub fn update<T: ::lightshade::Table>(&mut self, row: T) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::update(self, row)
+            pub fn update<T: ::lightshadedb::Table>(&mut self, row: T) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::update(self, row)
             }
 
-            pub fn patch<T: ::lightshade::Table>(
+            pub fn patch<T: ::lightshadedb::Table>(
                 &mut self,
                 key: T::Key,
                 patch: T::Patch,
-            ) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::patch::<T>(self, key, patch)
+            ) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::patch::<T>(self, key, patch)
             }
 
-            pub fn delete<T: ::lightshade::Table>(&mut self, key: T::Key) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::delete::<T>(self, key)
+            pub fn delete<T: ::lightshadedb::Table>(&mut self, key: T::Key) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::delete::<T>(self, key)
             }
 
-            pub fn count<T: ::lightshade::Table>(&self) -> ::lightshade::Result<u64> {
-                ::lightshade::Backend::count::<T>(self)
+            pub fn count<T: ::lightshadedb::Table>(&self) -> ::lightshadedb::Result<u64> {
+                ::lightshadedb::Backend::count::<T>(self)
             }
 
-            pub fn scan<T: ::lightshade::Table>(&self) -> ::lightshade::Result<::std::vec::Vec<T>> {
-                ::lightshade::Backend::scan::<T>(self)
+            pub fn scan<T: ::lightshadedb::Table>(&self) -> ::lightshadedb::Result<::std::vec::Vec<T>> {
+                ::lightshadedb::Backend::scan::<T>(self)
             }
 
-            pub fn flush(&mut self) -> ::lightshade::Result<()> {
+            pub fn flush(&mut self) -> ::lightshadedb::Result<()> {
                 match self {
                     #[cfg(feature = "embedded")]
                     App::Embedded(db) => db.flush(),
                     #[cfg(feature = "client")]
-                    App::Client(_) => ::std::result::Result::Err(::lightshade::Error::Unsupported {
+                    App::Client(_) => ::std::result::Result::Err(::lightshadedb::Error::Unsupported {
                         feature: "embedded",
                     }),
                 }
             }
 
-            pub fn checkpoint(&mut self) -> ::lightshade::Result<()> {
+            pub fn checkpoint(&mut self) -> ::lightshadedb::Result<()> {
                 match self {
                     #[cfg(feature = "embedded")]
                     App::Embedded(db) => db.checkpoint(),
                     #[cfg(feature = "client")]
-                    App::Client(_) => ::std::result::Result::Err(::lightshade::Error::Unsupported {
+                    App::Client(_) => ::std::result::Result::Err(::lightshadedb::Error::Unsupported {
                         feature: "embedded",
                     }),
                 }
             }
 
-            pub fn close(self) -> ::lightshade::Result<()> {
+            pub fn close(self) -> ::lightshadedb::Result<()> {
                 match self {
                     #[cfg(feature = "embedded")]
                     App::Embedded(db) => db.close(),
@@ -345,104 +345,104 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
 
 pub(crate) fn backend_impl_for_app() -> TokenStream {
     quote! {
-        impl ::lightshade::Backend for App {
-            fn __insert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<()> {
+        impl ::lightshadedb::Backend for App {
+            fn __insert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<()> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__insert(db, table, values),
+                    App::Embedded(db) => ::lightshadedb::Backend::__insert(db, table, values),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__insert(client, table, values),
+                    App::Client(client) => ::lightshadedb::Backend::__insert(client, table, values),
                 }
             }
-            fn __insert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>) -> ::lightshade::Result<()> {
+            fn __insert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>) -> ::lightshadedb::Result<()> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__insert_many(db, table, rows),
+                    App::Embedded(db) => ::lightshadedb::Backend::__insert_many(db, table, rows),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__insert_many(client, table, rows),
+                    App::Client(client) => ::lightshadedb::Backend::__insert_many(client, table, rows),
                 }
             }
-            fn __upsert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<bool> {
+            fn __upsert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<bool> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__upsert(db, table, values),
+                    App::Embedded(db) => ::lightshadedb::Backend::__upsert(db, table, values),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__upsert(client, table, values),
+                    App::Client(client) => ::lightshadedb::Backend::__upsert(client, table, values),
                 }
             }
-            fn __upsert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>) -> ::lightshade::Result<u64> {
+            fn __upsert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>) -> ::lightshadedb::Result<u64> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__upsert_many(db, table, rows),
+                    App::Embedded(db) => ::lightshadedb::Backend::__upsert_many(db, table, rows),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__upsert_many(client, table, rows),
+                    App::Client(client) => ::lightshadedb::Backend::__upsert_many(client, table, rows),
                 }
             }
-            fn __get(&self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<::std::option::Option<::std::vec::Vec<::lightshade::table::Value>>> {
+            fn __get(&self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<::std::option::Option<::std::vec::Vec<::lightshadedb::table::Value>>> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__get(db, table, key),
+                    App::Embedded(db) => ::lightshadedb::Backend::__get(db, table, key),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__get(client, table, key),
+                    App::Client(client) => ::lightshadedb::Backend::__get(client, table, key),
                 }
             }
-            fn __contains(&self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<bool> {
+            fn __contains(&self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<bool> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__contains(db, table, key),
+                    App::Embedded(db) => ::lightshadedb::Backend::__contains(db, table, key),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__contains(client, table, key),
+                    App::Client(client) => ::lightshadedb::Backend::__contains(client, table, key),
                 }
             }
-            fn __update(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<bool> {
+            fn __update(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<bool> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__update(db, table, values),
+                    App::Embedded(db) => ::lightshadedb::Backend::__update(db, table, values),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__update(client, table, values),
+                    App::Client(client) => ::lightshadedb::Backend::__update(client, table, values),
                 }
             }
-            fn __delete(&mut self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<bool> {
+            fn __delete(&mut self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<bool> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__delete(db, table, key),
+                    App::Embedded(db) => ::lightshadedb::Backend::__delete(db, table, key),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__delete(client, table, key),
+                    App::Client(client) => ::lightshadedb::Backend::__delete(client, table, key),
                 }
             }
-            fn __count(&self, table: &'static str) -> ::lightshade::Result<u64> {
+            fn __count(&self, table: &'static str) -> ::lightshadedb::Result<u64> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__count(db, table),
+                    App::Embedded(db) => ::lightshadedb::Backend::__count(db, table),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__count(client, table),
+                    App::Client(client) => ::lightshadedb::Backend::__count(client, table),
                 }
             }
-            fn __scan(&self, table: &'static str) -> ::lightshade::Result<::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>> {
+            fn __scan(&self, table: &'static str) -> ::lightshadedb::Result<::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>> {
                 match self {
                     #[cfg(feature = "embedded")]
-                    App::Embedded(db) => ::lightshade::Backend::__scan(db, table),
+                    App::Embedded(db) => ::lightshadedb::Backend::__scan(db, table),
                     #[cfg(feature = "client")]
-                    App::Client(client) => ::lightshade::Backend::__scan(client, table),
+                    App::Client(client) => ::lightshadedb::Backend::__scan(client, table),
                 }
             }
-            fn begin(&mut self) -> ::lightshade::Result<()> {
+            fn begin(&mut self) -> ::lightshadedb::Result<()> {
                 App::begin(self)
             }
-            fn commit(&mut self) -> ::lightshade::Result<()> {
+            fn commit(&mut self) -> ::lightshadedb::Result<()> {
                 App::commit(self)
             }
-            fn rollback(&mut self) -> ::lightshade::Result<()> {
+            fn rollback(&mut self) -> ::lightshadedb::Result<()> {
                 App::rollback(self)
             }
             fn in_transaction(&self) -> bool {
                 App::in_transaction(self)
             }
-            fn transaction<T, F>(&mut self, f: F) -> ::lightshade::Result<T>
-            where F: ::std::ops::FnOnce(&mut Self) -> ::lightshade::Result<T>, Self: ::std::marker::Sized {
+            fn transaction<T, F>(&mut self, f: F) -> ::lightshadedb::Result<T>
+            where F: ::std::ops::FnOnce(&mut Self) -> ::lightshadedb::Result<T>, Self: ::std::marker::Sized {
                 App::transaction(self, f)
             }
-            fn close(self) -> ::lightshade::Result<()> {
+            fn close(self) -> ::lightshadedb::Result<()> {
                 App::close(self)
             }
         }

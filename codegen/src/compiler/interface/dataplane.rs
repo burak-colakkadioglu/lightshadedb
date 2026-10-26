@@ -980,7 +980,7 @@ pub(crate) fn emit_restore(out: &mut String, workload: &Workload) -> Result<(), 
     );
     line(
         out,
-        "    if __ls_magic != *b\"LIGHTDMP\" { return Err(format!(\"`{__ls_source}` is not a Lightshade dump\")); }",
+        "    if __ls_magic != *b\"LIGHTDMP\" { return Err(format!(\"`{__ls_source}` is not a Lightshade DB dump\")); }",
     );
     line(
         out,

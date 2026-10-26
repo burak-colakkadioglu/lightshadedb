@@ -1,5 +1,5 @@
 [Unit]
-Description=Lightshade tenant server
+Description=Lightshade DB tenant server
 After=network.target
 StartLimitIntervalSec=60
 StartLimitBurst=3

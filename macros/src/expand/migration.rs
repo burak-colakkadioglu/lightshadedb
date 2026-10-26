@@ -13,7 +13,7 @@ pub(crate) fn migration_support(schema: &Schema) -> TokenStream {
             let has_default = field.default.is_some();
             let nullable = field.nullable;
             quote! {
-                ::lightshade::migration::FieldSummary {
+                ::lightshadedb::migration::FieldSummary {
                     name: ::std::string::String::from(#field_name),
                     ty: #ty,
                     primary_key: #primary,
@@ -23,7 +23,7 @@ pub(crate) fn migration_support(schema: &Schema) -> TokenStream {
             }
         });
         quote! {
-            ::lightshade::migration::TableSummary {
+            ::lightshadedb::migration::TableSummary {
                 name: ::std::string::String::from(#name),
                 fields: ::std::vec![#(#fields,)*],
             }
@@ -54,7 +54,7 @@ pub(crate) fn migration_support(schema: &Schema) -> TokenStream {
                 None => quote!(::std::option::Option::None),
             };
             quote! {
-                ::lightshade::migration::FieldHint {
+                ::lightshadedb::migration::FieldHint {
                     compiled_name: ::std::string::String::from(#compiled_field),
                     stored_name: #stored_field,
                     convert_from: #convert_from,
@@ -62,7 +62,7 @@ pub(crate) fn migration_support(schema: &Schema) -> TokenStream {
             }
         });
         quote! {
-            ::lightshade::migration::TableHint {
+            ::lightshadedb::migration::TableHint {
                 compiled_name: ::std::string::String::from(#compiled_name),
                 stored_name: #stored_name,
                 fields: ::std::vec![#(#fields,)*],
@@ -77,7 +77,7 @@ pub(crate) fn migration_support(schema: &Schema) -> TokenStream {
             Some(quote! {
                 #[doc(hidden)]
                 #[allow(dead_code, non_snake_case)]
-                fn #name(value: #old) -> ::lightshade::Result<#new> {
+                fn #name(value: #old) -> ::lightshadedb::Result<#new> {
                     #with(value)
                 }
             })
@@ -89,23 +89,23 @@ pub(crate) fn migration_support(schema: &Schema) -> TokenStream {
         #[cfg(feature = "embedded")]
         pub fn migration_plan(
             path: impl ::std::convert::AsRef<::std::path::Path>,
-        ) -> ::lightshade::Result<::lightshade::MigrationPlan> {
+        ) -> ::lightshadedb::Result<::lightshadedb::MigrationPlan> {
             let path = path.as_ref();
             if !path.exists() {
-                return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                     path: path.to_path_buf(),
                 });
             }
             let (stored_fingerprint, _, stored) =
-                __ls_public(__lightshade::Db::__ls_stored_schema(path))?;
+                __ls_public(__lightshadedb::Db::__ls_stored_schema(path))?;
             let mut from_tables = ::std::vec::Vec::with_capacity(stored.len());
             for (name, fields) in stored {
                 let mut from_fields = ::std::vec::Vec::with_capacity(fields.len());
                 for (field, tag, primary_key, nullable) in fields {
-                    let ty = ::lightshade::FieldType::from_tag(tag).ok_or(
-                        ::lightshade::Error::Corrupt(::lightshade::Corruption::InvalidEncoding),
+                    let ty = ::lightshadedb::FieldType::from_tag(tag).ok_or(
+                        ::lightshadedb::Error::Corrupt(::lightshadedb::Corruption::InvalidEncoding),
                     )?;
-                    from_fields.push(::lightshade::migration::FieldSummary {
+                    from_fields.push(::lightshadedb::migration::FieldSummary {
                         name: field,
                         ty,
                         primary_key,
@@ -113,42 +113,42 @@ pub(crate) fn migration_support(schema: &Schema) -> TokenStream {
                         nullable,
                     });
                 }
-                from_tables.push(::lightshade::migration::TableSummary {
+                from_tables.push(::lightshadedb::migration::TableSummary {
                     name,
                     fields: from_fields,
                 });
             }
-            let from = ::lightshade::migration::SchemaSummary {
+            let from = ::lightshadedb::migration::SchemaSummary {
                 fingerprint: stored_fingerprint,
                 tables: from_tables,
             };
-            let to = ::lightshade::migration::SchemaSummary {
+            let to = ::lightshadedb::migration::SchemaSummary {
                 fingerprint: 0,
                 tables: ::std::vec![#(#compiled_tables,)*],
             };
             let hints = ::std::vec![#(#hints,)*];
-            ::lightshade::migration::build_plan(from, to, &hints)
+            ::lightshadedb::migration::build_plan(from, to, &hints)
         }
 
         #[cfg(feature = "embedded")]
         pub fn migrate(
             path: impl ::std::convert::AsRef<::std::path::Path>,
-            options: ::lightshade::MigrationOptions,
-        ) -> ::lightshade::Result<::lightshade::MigrationReport> {
+            options: ::lightshadedb::MigrationOptions,
+        ) -> ::lightshadedb::Result<::lightshadedb::MigrationReport> {
             let path = path.as_ref();
             if !path.exists() {
-                return ::std::result::Result::Err(::lightshade::Error::NotFound {
+                return ::std::result::Result::Err(::lightshadedb::Error::NotFound {
                     path: path.to_path_buf(),
                 });
             }
             let started = ::std::time::Instant::now();
             let plan = migration_plan(path)?;
             options.check(&plan)?;
-            let (_, from_lsn, _) = __ls_public(__lightshade::Db::__ls_stored_schema(path))?;
+            let (_, from_lsn, _) = __ls_public(__lightshadedb::Db::__ls_stored_schema(path))?;
             if plan.is_empty() {
                 let (lsn, rows, _, _, _, _) =
-                    __ls_public(__lightshade::Db::__ls_admin_verify(path))?;
-                return ::std::result::Result::Ok(::lightshade::MigrationReport {
+                    __ls_public(__lightshadedb::Db::__ls_admin_verify(path))?;
+                return ::std::result::Result::Ok(::lightshadedb::MigrationReport {
                     plan,
                     from_lsn: lsn,
                     to_lsn: lsn,
@@ -169,8 +169,8 @@ pub(crate) fn migration_support(schema: &Schema) -> TokenStream {
                 ::std::option::Option::None
             };
             let (to_lsn, rows) =
-                __ls_public(__lightshade::Db::__ls_admin_migrate(path, backup.as_deref()))?;
-            ::std::result::Result::Ok(::lightshade::MigrationReport {
+                __ls_public(__lightshadedb::Db::__ls_admin_migrate(path, backup.as_deref()))?;
+            ::std::result::Result::Ok(::lightshadedb::MigrationReport {
                 plan,
                 from_lsn,
                 to_lsn,

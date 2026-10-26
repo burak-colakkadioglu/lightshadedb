@@ -29,13 +29,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-lightshade = {{ path = "{}" }}
+lightshadedb = {{ path = "{}" }}
 
 [features]
 default = ["embedded"]
-embedded = ["lightshade/embedded"]
-host = ["embedded", "lightshade/host"]
-client = ["lightshade/client"]
+embedded = ["lightshadedb/embedded"]
+host = ["embedded", "lightshadedb/host"]
+client = ["lightshadedb/client"]
 
 [workspace]
 "#,
@@ -46,7 +46,7 @@ client = ["lightshade/client"]
     std::fs::write(
         directory.join("src").join("lib.rs"),
         format!(
-            "use lightshade::prelude::*;\n\n#[lightshade::schema]\npub mod store {{\n{module}\n}}\n"
+            "use lightshadedb::prelude::*;\n\n#[lightshadedb::schema]\npub mod store {{\n{module}\n}}\n"
         ),
     )
     .unwrap();
@@ -94,13 +94,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-lightshade = {{ path = "{}" }}
+lightshadedb = {{ path = "{}" }}
 
 [features]
 default = ["embedded"]
-embedded = ["lightshade/embedded"]
-host = ["embedded", "lightshade/host"]
-client = ["lightshade/client"]
+embedded = ["lightshadedb/embedded"]
+host = ["embedded", "lightshadedb/host"]
+client = ["lightshadedb/client"]
 
 [workspace]
 "#,
@@ -142,10 +142,10 @@ client = ["lightshade/client"]
 }
 
 const TABLE: &str = r#"
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub title: String,
     }
@@ -156,13 +156,13 @@ fn tables_need_exactly_one_primary_key() {
     check_case(
         "missing-primary-key",
         r#"
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Note {
         pub id: i64,
     }
 "#,
-        "must have exactly one `#[lightshade(primary_key)]` field",
+        "must have exactly one `#[lightshadedb(primary_key)]` field",
     );
 }
 
@@ -173,9 +173,9 @@ fn updates_reject_limit_and_offset() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Note::id.eq(note),
             set = (Note::title.set(title),),
             limit = 1,
@@ -190,9 +190,9 @@ fn updates_reject_limit_and_offset() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Note::id.eq(note),
             set = (Note::title.set(title),),
             offset = 1,
@@ -211,9 +211,9 @@ fn updates_require_set() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::update(filter = Note::id.eq(note))]
+        #[lightshadedb::update(filter = Note::id.eq(note))]
         fn touch(&mut self, note: i64) -> Result<u64>;
     }}"#
         ),
@@ -228,9 +228,9 @@ fn deletes_accept_only_a_filter() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::delete(
+        #[lightshadedb::delete(
             filter = Note::id.eq(note),
             set = (Note::title.set(title),),
         )]
@@ -244,9 +244,9 @@ fn deletes_accept_only_a_filter() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::delete(filter = Note::id.eq(note), offset = 1)]
+        #[lightshadedb::delete(filter = Note::id.eq(note), offset = 1)]
         fn remove(&mut self, note: i64) -> Result<u64>;
     }}"#
         ),
@@ -261,9 +261,9 @@ fn unknown_fields_are_rejected() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::query(filter = Note::missing.eq(note))]
+        #[lightshadedb::query(filter = Note::missing.eq(note))]
         fn find(&self, note: i64) -> Result<Vec<Note>>;
     }}"#
         ),
@@ -278,9 +278,9 @@ fn limits_need_integers() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::query(filter = Note::id.eq(note), limit = title)]
+        #[lightshadedb::query(filter = Note::id.eq(note), limit = title)]
         fn find(&self, note: i64, title: String) -> Result<Vec<Note>>;
     }}"#
         ),
@@ -295,9 +295,9 @@ fn counts_reject_order_limit_and_offset() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::query(count, filter = Note::id.eq(note), limit = 1)]
+        #[lightshadedb::query(count, filter = Note::id.eq(note), limit = 1)]
         fn count(&self, note: i64) -> Result<i64>;
     }}"#
         ),
@@ -308,9 +308,9 @@ fn counts_reject_order_limit_and_offset() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::query(count, filter = Note::id.eq(note), offset = 1)]
+        #[lightshadedb::query(count, filter = Note::id.eq(note), offset = 1)]
         fn count(&self, note: i64) -> Result<i64>;
     }}"#
         ),
@@ -325,9 +325,9 @@ fn duplicate_arguments_are_rejected() {
         &format!(
             r#"{TABLE}
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {{
-        #[lightshade::query(filter = Note::id.eq(note), offset = 1, offset = 2)]
+        #[lightshadedb::query(filter = Note::id.eq(note), offset = 1, offset = 2)]
         fn find(&self, note: i64) -> Result<Vec<Note>>;
     }}"#
         ),
@@ -340,22 +340,22 @@ fn aggregates_need_numeric_fields() {
     check_case(
         "sum-text",
         r#"
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub title: String,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct Total {
         pub total: i64,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Notes {
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Note,
             select = Total::select().total(sum(Note::title)),
             filter = Note::id.ge(0),
@@ -382,19 +382,19 @@ credentials_file = "creds.toml"
 allow = ["999.0.0.1"]
 "#,
         )],
-        r#"use lightshade::prelude::*;
+        r#"use lightshadedb::prelude::*;
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
     }
 }
 
-lightshade::registry!("lightshade.toml");
+lightshadedb::registry!("lightshade.toml");
 "#,
         "has an invalid allowlist entry",
     );
@@ -409,19 +409,19 @@ path = "data/a1.lsdb"
 allow = ["10.0.0.0/8"]
 "#,
         )],
-        r#"use lightshade::prelude::*;
+        r#"use lightshadedb::prelude::*;
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
     }
 }
 
-lightshade::registry!("lightshade.toml");
+lightshadedb::registry!("lightshade.toml");
 "#,
         "`allow` needs `mode = \"host\"`",
     );
@@ -431,10 +431,10 @@ lightshade::registry!("lightshade.toml");
 fn nullable_primary_keys_are_rejected() {
     check_case(
         "nullable-primary-key",
-        r#"use lightshade::prelude::*;
+        r#"use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: Option<i64>,
         pub title: String,
     }"#,
@@ -446,17 +446,17 @@ fn nullable_primary_keys_are_rejected() {
 fn nullable_option_params_are_rejected() {
     check_case(
         "nullable-param",
-        r#"use lightshade::prelude::*;
+        r#"use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub score: Option<i64>,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait NoteOps {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Note::id.eq(id),
         )]
         fn by_id(&self, id: Option<i64>) -> Result<Vec<Note>>;
@@ -469,16 +469,16 @@ fn nullable_option_params_are_rejected() {
 fn joins_over_nullable_columns_are_gated() {
     check_case(
         "nullable-join",
-        r#"use lightshade::prelude::*;
+        r#"use lightshadedb::prelude::*;
 
     pub struct Author {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub nick: Option<String>,
     }
 
     pub struct Book {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub author_nick: Option<String>,
     }
@@ -487,9 +487,9 @@ fn joins_over_nullable_columns_are_gated() {
         pub id: i64,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Joins {
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Author,
             joins = (Book.join_on(Book::author_nick.eq_field(Author::nick)),),
             select = Row::select().id(Author::id.select()),
@@ -504,17 +504,17 @@ fn joins_over_nullable_columns_are_gated() {
 fn comparisons_against_none_are_rejected() {
     check_case(
         "none-comparison",
-        r#"use lightshade::prelude::*;
+        r#"use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub score: Option<i64>,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait NoteOps {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Note::score.eq(None),
         )]
         fn nones(&self) -> Result<Vec<Note>>;
@@ -527,13 +527,13 @@ fn comparisons_against_none_are_rejected() {
 fn nested_options_are_rejected() {
     check_case(
         "nested-option",
-        r#"use lightshade::prelude::*;
+        r#"use lightshadedb::prelude::*;
 
     pub struct Note {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub score: Option<Option<i64>>,
     }"#,
-        "unsupported Lightshade field type",
+        "unsupported Lightshade DB field type",
     );
 }

@@ -1,7 +1,7 @@
 use super::ops::{operation_return, operation_trait_impls, row_trait, OperationReturn};
 use crate::lower::LoweredSchema;
 use crate::model::{Operation, OperationKind, Schema};
-use lightshade_codegen::ir::Ty;
+use lightshadedb_codegen::ir::Ty;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::Type;
@@ -18,7 +18,7 @@ pub(crate) fn net_call(call: NetCall, index: TokenStream, args: TokenStream) -> 
         NetCall::Sync => quote!(self.__ls_request(#index, #args)?),
         NetCall::Pool => quote!(self.pool.request(#index, #args).await?),
         NetCall::Pooled => quote!(self.pooled.request(
-            ::lightshade::wire::RequestKind::Operation,
+            ::lightshadedb::wire::RequestKind::Operation,
             #index,
             #args
         ).await?),
@@ -35,13 +35,13 @@ pub(crate) fn operation_decode(operation: &Operation, schema: &Schema) -> TokenS
         OperationReturn::Rows(row, projection) => {
             let trait_ = row_trait(projection);
             let width = if projection {
-                quote!(<#row as ::lightshade::Projection>::FIELDS.len())
+                quote!(<#row as ::lightshadedb::Projection>::FIELDS.len())
             } else {
-                quote!(<#row as ::lightshade::Table>::COLUMNS.len())
+                quote!(<#row as ::lightshadedb::Table>::COLUMNS.len())
             };
             quote! {
                 let width = #width;
-                let rows = ::lightshade::wire::decode_rows(values, width)?;
+                let rows = ::lightshadedb::wire::decode_rows(values, width)?;
                 let mut output = ::std::vec::Vec::with_capacity(rows.len());
                 for row in rows {
                     output.push(<#row as #trait_>::from_values(row)?);
@@ -50,14 +50,14 @@ pub(crate) fn operation_decode(operation: &Operation, schema: &Schema) -> TokenS
             }
         }
         OperationReturn::Count => quote! {
-            let value = ::lightshade::wire::as_i64(
-                ::lightshade::wire::param(&values, 0)?
+            let value = ::lightshadedb::wire::as_i64(
+                ::lightshadedb::wire::param(&values, 0)?
             )?;
             ::std::result::Result::Ok(value)
         },
         OperationReturn::Affected => quote! {
-            let value = ::lightshade::wire::as_u64(
-                ::lightshade::wire::param(&values, 0)?
+            let value = ::lightshadedb::wire::as_u64(
+                ::lightshadedb::wire::param(&values, 0)?
             )?;
             ::std::result::Result::Ok(value)
         },
@@ -119,22 +119,22 @@ pub(crate) fn user_op_methods(
 pub(crate) fn param_value(param: &crate::model::Param) -> TokenStream {
     let ident = &param.ident;
     match param.ir {
-        Ty::I8 => quote!(::lightshade::table::Value::I8(#ident)),
-        Ty::I16 => quote!(::lightshade::table::Value::I16(#ident)),
-        Ty::I32 => quote!(::lightshade::table::Value::I32(#ident)),
-        Ty::I64 => quote!(::lightshade::table::Value::I64(#ident)),
-        Ty::U8 => quote!(::lightshade::table::Value::U8(#ident)),
-        Ty::U16 => quote!(::lightshade::table::Value::U16(#ident)),
-        Ty::U32 => quote!(::lightshade::table::Value::U32(#ident)),
-        Ty::U64 => quote!(::lightshade::table::Value::U64(#ident)),
-        Ty::F32 => quote!(::lightshade::table::Value::F32(#ident)),
-        Ty::F64 => quote!(::lightshade::table::Value::F64(#ident)),
-        Ty::Bool => quote!(::lightshade::table::Value::Bool(#ident)),
-        Ty::Text => quote!(::lightshade::table::Value::Text(#ident.to_string())),
-        Ty::Bytes => quote!(::lightshade::table::Value::Bytes(#ident.to_vec())),
+        Ty::I8 => quote!(::lightshadedb::table::Value::I8(#ident)),
+        Ty::I16 => quote!(::lightshadedb::table::Value::I16(#ident)),
+        Ty::I32 => quote!(::lightshadedb::table::Value::I32(#ident)),
+        Ty::I64 => quote!(::lightshadedb::table::Value::I64(#ident)),
+        Ty::U8 => quote!(::lightshadedb::table::Value::U8(#ident)),
+        Ty::U16 => quote!(::lightshadedb::table::Value::U16(#ident)),
+        Ty::U32 => quote!(::lightshadedb::table::Value::U32(#ident)),
+        Ty::U64 => quote!(::lightshadedb::table::Value::U64(#ident)),
+        Ty::F32 => quote!(::lightshadedb::table::Value::F32(#ident)),
+        Ty::F64 => quote!(::lightshadedb::table::Value::F64(#ident)),
+        Ty::Bool => quote!(::lightshadedb::table::Value::Bool(#ident)),
+        Ty::Text => quote!(::lightshadedb::table::Value::Text(#ident.to_string())),
+        Ty::Bytes => quote!(::lightshadedb::table::Value::Bytes(#ident.to_vec())),
         Ty::Uuid => match &param.ty {
-            Type::Reference(_) => quote!(::lightshade::table::Value::Uuid(*#ident)),
-            _ => quote!(::lightshade::table::Value::Uuid(#ident)),
+            Type::Reference(_) => quote!(::lightshadedb::table::Value::Uuid(*#ident)),
+            _ => quote!(::lightshadedb::table::Value::Uuid(#ident)),
         },
     }
 }
@@ -165,7 +165,7 @@ pub(crate) fn crud_arms(
                 1 => {
                     let call = request(quote!(&request));
                     quote! {
-                        let mut request = ::std::vec![::lightshade::table::Value::U32(rows.len() as u32)];
+                        let mut request = ::std::vec![::lightshadedb::table::Value::U32(rows.len() as u32)];
                         for row in &rows { request.extend(row.iter().cloned()); }
                         #call;
                         ::std::result::Result::Ok(())
@@ -175,23 +175,23 @@ pub(crate) fn crud_arms(
                     let call = request(quote!(&values));
                     quote! {
                         let values = #call;
-                        ::std::result::Result::Ok(::lightshade::wire::as_bool(::lightshade::wire::param(&values, 0)?)?)
+                        ::std::result::Result::Ok(::lightshadedb::wire::as_bool(::lightshadedb::wire::param(&values, 0)?)?)
                     }
                 }
                 3 => {
                     let call = request(quote!(&request));
                     quote! {
-                        let mut request = ::std::vec![::lightshade::table::Value::U32(rows.len() as u32)];
+                        let mut request = ::std::vec![::lightshadedb::table::Value::U32(rows.len() as u32)];
                         for row in &rows { request.extend(row.iter().cloned()); }
                         let values = #call;
-                        ::std::result::Result::Ok(::lightshade::wire::as_u64(::lightshade::wire::param(&values, 0)?)?)
+                        ::std::result::Result::Ok(::lightshadedb::wire::as_u64(::lightshadedb::wire::param(&values, 0)?)?)
                     }
                 }
                 4 => {
                     let call = request(quote!(&[key]));
                     quote! {
                         let values = #call;
-                        if ::lightshade::wire::as_u8(::lightshade::wire::param(&values, 0)?)? == 0 {
+                        if ::lightshadedb::wire::as_u8(::lightshadedb::wire::param(&values, 0)?)? == 0 {
                             return ::std::result::Result::Ok(::std::option::Option::None);
                         }
                         let row = values.into_iter().skip(1).collect::<::std::vec::Vec<_>>();
@@ -202,35 +202,35 @@ pub(crate) fn crud_arms(
                     let call = request(quote!(&[key]));
                     quote! {
                         let values = #call;
-                        ::std::result::Result::Ok(::lightshade::wire::as_bool(::lightshade::wire::param(&values, 0)?)?)
+                        ::std::result::Result::Ok(::lightshadedb::wire::as_bool(::lightshadedb::wire::param(&values, 0)?)?)
                     }
                 }
                 6 => {
                     let call = request(quote!(&values));
                     quote! {
                         let values = #call;
-                        ::std::result::Result::Ok(::lightshade::wire::as_bool(::lightshade::wire::param(&values, 0)?)?)
+                        ::std::result::Result::Ok(::lightshadedb::wire::as_bool(::lightshadedb::wire::param(&values, 0)?)?)
                     }
                 }
                 7 => {
                     let call = request(quote!(&[key]));
                     quote! {
                         let values = #call;
-                        ::std::result::Result::Ok(::lightshade::wire::as_bool(::lightshade::wire::param(&values, 0)?)?)
+                        ::std::result::Result::Ok(::lightshadedb::wire::as_bool(::lightshadedb::wire::param(&values, 0)?)?)
                     }
                 }
                 8 => {
                     let call = request(quote!(&[]));
                     quote! {
                         let values = #call;
-                        ::std::result::Result::Ok(::lightshade::wire::as_u64(::lightshade::wire::param(&values, 0)?)?)
+                        ::std::result::Result::Ok(::lightshadedb::wire::as_u64(::lightshadedb::wire::param(&values, 0)?)?)
                     }
                 }
                 9 => {
                     let call = request(quote!(&[]));
                     quote! {
                         let values = #call;
-                        ::lightshade::wire::decode_rows(values, #width)
+                        ::lightshadedb::wire::decode_rows(values, #width)
                     }
                 }
                 _ => unreachable!(),
@@ -270,8 +270,8 @@ pub(crate) fn crud_arms_for(base: usize, lowered: &LoweredSchema, call: NetCall)
 
 pub(crate) fn unknown_table_arm() -> TokenStream {
     quote! {
-        other => ::std::result::Result::Err(::lightshade::Error::Schema(
-            ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+        other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+            ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
         ))
     }
 }
@@ -291,137 +291,137 @@ pub(crate) fn async_crud_methods(arms: &CrudArms, unknown: &TokenStream) -> Vec<
     } = arms;
     vec![
         quote! {
-            pub async fn insert<T: ::lightshade::Table>(&self, row: T) -> ::lightshade::Result<()> {
-                let values = <T as ::lightshade::Table>::to_values(&row);
-                match <T as ::lightshade::Table>::NAME {
+            pub async fn insert<T: ::lightshadedb::Table>(&self, row: T) -> ::lightshadedb::Result<()> {
+                let values = <T as ::lightshadedb::Table>::to_values(&row);
+                match <T as ::lightshadedb::Table>::NAME {
                     #(#insert,)*
                     #unknown,
                 }
             }
         },
         quote! {
-            pub async fn insert_many<T: ::lightshade::Table>(
+            pub async fn insert_many<T: ::lightshadedb::Table>(
                 &self,
                 rows: impl ::std::iter::IntoIterator<Item = T>,
-            ) -> ::lightshade::Result<()> {
+            ) -> ::lightshadedb::Result<()> {
                 let rows = rows
                     .into_iter()
-                    .map(|row| <T as ::lightshade::Table>::to_values(&row))
+                    .map(|row| <T as ::lightshadedb::Table>::to_values(&row))
                     .collect::<::std::vec::Vec<_>>();
-                match <T as ::lightshade::Table>::NAME {
+                match <T as ::lightshadedb::Table>::NAME {
                     #(#insert_many,)*
                     #unknown,
                 }
             }
         },
         quote! {
-            pub async fn upsert<T: ::lightshade::Table>(&self, row: T) -> ::lightshade::Result<bool> {
-                let values = <T as ::lightshade::Table>::to_values(&row);
-                match <T as ::lightshade::Table>::NAME {
+            pub async fn upsert<T: ::lightshadedb::Table>(&self, row: T) -> ::lightshadedb::Result<bool> {
+                let values = <T as ::lightshadedb::Table>::to_values(&row);
+                match <T as ::lightshadedb::Table>::NAME {
                     #(#upsert,)*
                     #unknown,
                 }
             }
         },
         quote! {
-            pub async fn upsert_many<T: ::lightshade::Table>(
+            pub async fn upsert_many<T: ::lightshadedb::Table>(
                 &self,
                 rows: impl ::std::iter::IntoIterator<Item = T>,
-            ) -> ::lightshade::Result<u64> {
+            ) -> ::lightshadedb::Result<u64> {
                 let rows = rows
                     .into_iter()
-                    .map(|row| <T as ::lightshade::Table>::to_values(&row))
+                    .map(|row| <T as ::lightshadedb::Table>::to_values(&row))
                     .collect::<::std::vec::Vec<_>>();
-                match <T as ::lightshade::Table>::NAME {
+                match <T as ::lightshadedb::Table>::NAME {
                     #(#upsert_many,)*
                     #unknown,
                 }
             }
         },
         quote! {
-            pub async fn get<T: ::lightshade::Table>(
+            pub async fn get<T: ::lightshadedb::Table>(
                 &self,
                 key: T::Key,
-            ) -> ::lightshade::Result<::std::option::Option<T>> {
-                let key = <T as ::lightshade::Table>::key_to_value(&key);
-                let found = match <T as ::lightshade::Table>::NAME {
+            ) -> ::lightshadedb::Result<::std::option::Option<T>> {
+                let key = <T as ::lightshadedb::Table>::key_to_value(&key);
+                let found = match <T as ::lightshadedb::Table>::NAME {
                     #(#get,)*
                     #unknown,
                 }?;
                 match found {
                     ::std::option::Option::Some(values) => ::std::result::Result::Ok(
-                        ::std::option::Option::Some(<T as ::lightshade::Table>::from_values(values)?),
+                        ::std::option::Option::Some(<T as ::lightshadedb::Table>::from_values(values)?),
                     ),
                     ::std::option::Option::None => ::std::result::Result::Ok(::std::option::Option::None),
                 }
             }
         },
         quote! {
-            pub async fn contains<T: ::lightshade::Table>(
+            pub async fn contains<T: ::lightshadedb::Table>(
                 &self,
                 key: &T::Key,
-            ) -> ::lightshade::Result<bool> {
-                let key = <T as ::lightshade::Table>::key_to_value(key);
-                match <T as ::lightshade::Table>::NAME {
+            ) -> ::lightshadedb::Result<bool> {
+                let key = <T as ::lightshadedb::Table>::key_to_value(key);
+                match <T as ::lightshadedb::Table>::NAME {
                     #(#contains,)*
                     #unknown,
                 }
             }
         },
         quote! {
-            pub async fn update<T: ::lightshade::Table>(&self, row: T) -> ::lightshade::Result<bool> {
-                let values = <T as ::lightshade::Table>::to_values(&row);
-                match <T as ::lightshade::Table>::NAME {
+            pub async fn update<T: ::lightshadedb::Table>(&self, row: T) -> ::lightshadedb::Result<bool> {
+                let values = <T as ::lightshadedb::Table>::to_values(&row);
+                match <T as ::lightshadedb::Table>::NAME {
                     #(#update,)*
                     #unknown,
                 }
             }
         },
         quote! {
-            pub async fn patch<T: ::lightshade::Table>(
+            pub async fn patch<T: ::lightshadedb::Table>(
                 &self,
                 key: T::Key,
                 patch: T::Patch,
-            ) -> ::lightshade::Result<bool> {
+            ) -> ::lightshadedb::Result<bool> {
                 let ::std::option::Option::Some(mut row) = self.get::<T>(key).await? else {
                     return ::std::result::Result::Ok(false);
                 };
-                <T as ::lightshade::Table>::apply_patch(&mut row, &patch);
+                <T as ::lightshadedb::Table>::apply_patch(&mut row, &patch);
                 self.update(row).await
             }
         },
         quote! {
-            pub async fn delete<T: ::lightshade::Table>(
+            pub async fn delete<T: ::lightshadedb::Table>(
                 &self,
                 key: T::Key,
-            ) -> ::lightshade::Result<bool> {
-                let key = <T as ::lightshade::Table>::key_to_value(&key);
-                match <T as ::lightshade::Table>::NAME {
+            ) -> ::lightshadedb::Result<bool> {
+                let key = <T as ::lightshadedb::Table>::key_to_value(&key);
+                match <T as ::lightshadedb::Table>::NAME {
                     #(#delete,)*
                     #unknown,
                 }
             }
         },
         quote! {
-            pub async fn count<T: ::lightshade::Table>(&self) -> ::lightshade::Result<u64> {
-                match <T as ::lightshade::Table>::NAME {
+            pub async fn count<T: ::lightshadedb::Table>(&self) -> ::lightshadedb::Result<u64> {
+                match <T as ::lightshadedb::Table>::NAME {
                     #(#count,)*
                     #unknown,
                 }
             }
         },
         quote! {
-            pub async fn scan<T: ::lightshade::Table>(
+            pub async fn scan<T: ::lightshadedb::Table>(
                 &self,
-            ) -> ::lightshade::Result<::std::vec::Vec<T>> {
-                let rows: ::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>> =
-                    match <T as ::lightshade::Table>::NAME {
+            ) -> ::lightshadedb::Result<::std::vec::Vec<T>> {
+                let rows: ::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>> =
+                    match <T as ::lightshadedb::Table>::NAME {
                         #(#scan,)*
                         #unknown,
                     }?;
                 let mut output = ::std::vec::Vec::with_capacity(rows.len());
                 for values in rows {
-                    output.push(<T as ::lightshade::Table>::from_values(values)?);
+                    output.push(<T as ::lightshadedb::Table>::from_values(values)?);
                 }
                 ::std::result::Result::Ok(output)
             }
@@ -461,22 +461,22 @@ pub(crate) fn client_wrapper(
     let scan = crud_arms(base, lowered, 9, crud_call);
     let op_trait = operation_trait_impls(schema, &format_ident!("Client"));
     let unknown = quote! {
-        other => ::std::result::Result::Err(::lightshade::Error::Schema(
-            ::lightshade::SchemaError::UnknownTable { name: other.to_string() },
+        other => ::std::result::Result::Err(::lightshadedb::Error::Schema(
+            ::lightshadedb::SchemaError::UnknownTable { name: other.to_string() },
         ))
     };
 
     quote! {
         #[cfg(feature = "client")]
         struct __LsClientInner {
-            stream: ::lightshade::wire::Stream,
+            stream: ::lightshadedb::wire::Stream,
             in_transaction: bool,
         }
 
         #[cfg(feature = "client")]
         pub struct Client {
             inner: ::std::cell::RefCell<__LsClientInner>,
-            endpoint: ::lightshade::ClientEndpoint,
+            endpoint: ::lightshadedb::ClientEndpoint,
             remote_addr: ::std::option::Option<::std::net::SocketAddr>,
         }
 
@@ -484,24 +484,24 @@ pub(crate) fn client_wrapper(
         impl Client {
             pub fn connect(
                 endpoint: impl ::std::convert::AsRef<::std::path::Path>,
-                options: ::lightshade::ClientOptions,
-            ) -> ::lightshade::Result<Self> {
+                options: ::lightshadedb::ClientOptions,
+            ) -> ::lightshadedb::Result<Self> {
                 Self::connect_endpoint(
-                    ::lightshade::ClientEndpoint::path(endpoint.as_ref()),
+                    ::lightshadedb::ClientEndpoint::path(endpoint.as_ref()),
                     options,
                 )
             }
 
             pub fn connect_endpoint(
-                endpoint: ::lightshade::ClientEndpoint,
-                options: ::lightshade::ClientOptions,
-            ) -> ::lightshade::Result<Self> {
-                let (mut stream, endpoint) = ::lightshade::wire::connect(
+                endpoint: ::lightshadedb::ClientEndpoint,
+                options: ::lightshadedb::ClientOptions,
+            ) -> ::lightshadedb::Result<Self> {
+                let (mut stream, endpoint) = ::lightshadedb::wire::connect(
                     &endpoint,
                     options.connect_timeout,
                     options.io_timeout,
                 )?;
-                ::lightshade::wire::client_handshake(
+                ::lightshadedb::wire::client_handshake(
                     &mut stream,
                     #fingerprint,
                     &options.credentials,
@@ -520,29 +520,29 @@ pub(crate) fn client_wrapper(
 
             pub fn connect_tcp(
                 addr: impl ::std::net::ToSocketAddrs,
-                options: ::lightshade::ClientOptions,
-            ) -> ::lightshade::Result<Self> {
-                Self::connect_tcp_db(addr, ::lightshade::DEFAULT_DATABASE, options)
+                options: ::lightshadedb::ClientOptions,
+            ) -> ::lightshadedb::Result<Self> {
+                Self::connect_tcp_db(addr, ::lightshadedb::DEFAULT_DATABASE, options)
             }
 
             pub fn connect_tcp_db(
                 addr: impl ::std::net::ToSocketAddrs,
                 database: &str,
-                options: ::lightshade::ClientOptions,
-            ) -> ::lightshade::Result<Self> {
+                options: ::lightshadedb::ClientOptions,
+            ) -> ::lightshadedb::Result<Self> {
                 use ::std::net::TcpStream;
                 let addresses = addr
                     .to_socket_addrs()
-                    .map_err(|source| ::lightshade::Error::io("resolving the TCP address", source))?;
+                    .map_err(|source| ::lightshadedb::Error::io("resolving the TCP address", source))?;
                 let mut last = ::std::option::Option::None;
                 for address in addresses {
                     match TcpStream::connect_timeout(&address, options.connect_timeout) {
                         ::std::result::Result::Ok(tcp) => {
                             tcp.set_nodelay(true).ok();
-                            let mut stream = ::lightshade::wire::Stream::Tcp(tcp);
+                            let mut stream = ::lightshadedb::wire::Stream::Tcp(tcp);
                             stream.set_timeout(::std::option::Option::Some(options.io_timeout))?;
                             if let ::std::result::Result::Err(error) =
-                                ::lightshade::wire::client_handshake(
+                                ::lightshadedb::wire::client_handshake(
                                     &mut stream,
                                     #fingerprint,
                                     &options.credentials,
@@ -556,7 +556,7 @@ pub(crate) fn client_wrapper(
                                     stream,
                                     in_transaction: false,
                                 }),
-                                endpoint: ::lightshade::ClientEndpoint::tcp_db(
+                                endpoint: ::lightshadedb::ClientEndpoint::tcp_db(
                                     address.ip().to_string(),
                                     address.port(),
                                     database,
@@ -567,8 +567,8 @@ pub(crate) fn client_wrapper(
                         ::std::result::Result::Err(error) => last = ::std::option::Option::Some(error),
                     }
                 }
-                ::std::result::Result::Err(::lightshade::Error::io(
-                    "connecting to the Lightshade server",
+                ::std::result::Result::Err(::lightshadedb::Error::io(
+                    "connecting to the Lightshade DB server",
                     last.unwrap_or_else(|| ::std::io::Error::new(
                         ::std::io::ErrorKind::AddrNotAvailable,
                         "address resolved to no sockets",
@@ -576,7 +576,7 @@ pub(crate) fn client_wrapper(
                 ))
             }
 
-            pub fn endpoint(&self) -> &::lightshade::ClientEndpoint {
+            pub fn endpoint(&self) -> &::lightshadedb::ClientEndpoint {
                 &self.endpoint
             }
 
@@ -592,7 +592,7 @@ pub(crate) fn client_wrapper(
                 self.inner.borrow().in_transaction
             }
 
-            pub fn close(self) -> ::lightshade::Result<()> {
+            pub fn close(self) -> ::lightshadedb::Result<()> {
                 let _ = self.inner.into_inner().stream;
                 Ok(())
             }
@@ -600,22 +600,22 @@ pub(crate) fn client_wrapper(
             fn __ls_request(
                 &self,
                 index: u32,
-                params: &[::lightshade::table::Value],
-            ) -> ::lightshade::Result<::std::vec::Vec<::lightshade::table::Value>> {
+                params: &[::lightshadedb::table::Value],
+            ) -> ::lightshadedb::Result<::std::vec::Vec<::lightshadedb::table::Value>> {
                 let mut inner = self.inner.borrow_mut();
-                ::lightshade::wire::request(
+                ::lightshadedb::wire::request(
                     &mut inner.stream,
-                    ::lightshade::wire::RequestKind::Operation,
+                    ::lightshadedb::wire::RequestKind::Operation,
                     index,
                     params,
                 )
             }
 
-            pub fn begin(&mut self) -> ::lightshade::Result<()> {
+            pub fn begin(&mut self) -> ::lightshadedb::Result<()> {
                 let mut inner = self.inner.borrow_mut();
-                ::lightshade::wire::request(
+                ::lightshadedb::wire::request(
                     &mut inner.stream,
-                    ::lightshade::wire::RequestKind::Begin,
+                    ::lightshadedb::wire::RequestKind::Begin,
                     0,
                     &[],
                 )?;
@@ -623,11 +623,11 @@ pub(crate) fn client_wrapper(
                 Ok(())
             }
 
-            pub fn commit(&mut self) -> ::lightshade::Result<()> {
+            pub fn commit(&mut self) -> ::lightshadedb::Result<()> {
                 let mut inner = self.inner.borrow_mut();
-                ::lightshade::wire::request(
+                ::lightshadedb::wire::request(
                     &mut inner.stream,
-                    ::lightshade::wire::RequestKind::Commit,
+                    ::lightshadedb::wire::RequestKind::Commit,
                     0,
                     &[],
                 )?;
@@ -635,11 +635,11 @@ pub(crate) fn client_wrapper(
                 Ok(())
             }
 
-            pub fn rollback(&mut self) -> ::lightshade::Result<()> {
+            pub fn rollback(&mut self) -> ::lightshadedb::Result<()> {
                 let mut inner = self.inner.borrow_mut();
-                ::lightshade::wire::request(
+                ::lightshadedb::wire::request(
                     &mut inner.stream,
-                    ::lightshade::wire::RequestKind::Rollback,
+                    ::lightshadedb::wire::RequestKind::Rollback,
                     0,
                     &[],
                 )?;
@@ -649,8 +649,8 @@ pub(crate) fn client_wrapper(
 
             pub fn transaction<T>(
                 &mut self,
-                f: impl ::std::ops::FnOnce(&mut Client) -> ::lightshade::Result<T>,
-            ) -> ::lightshade::Result<T> {
+                f: impl ::std::ops::FnOnce(&mut Client) -> ::lightshadedb::Result<T>,
+            ) -> ::lightshadedb::Result<T> {
                 self.begin()?;
                 let outcome = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| f(self)));
                 match outcome {
@@ -669,134 +669,134 @@ pub(crate) fn client_wrapper(
                 }
             }
 
-            pub fn insert<T: ::lightshade::Table>(&mut self, row: T) -> ::lightshade::Result<()> {
-                ::lightshade::Backend::insert(self, row)
+            pub fn insert<T: ::lightshadedb::Table>(&mut self, row: T) -> ::lightshadedb::Result<()> {
+                ::lightshadedb::Backend::insert(self, row)
             }
 
-            pub fn insert_many<T: ::lightshade::Table>(
+            pub fn insert_many<T: ::lightshadedb::Table>(
                 &mut self,
                 rows: impl ::std::iter::IntoIterator<Item = T>,
-            ) -> ::lightshade::Result<()> {
-                ::lightshade::Backend::insert_many(self, rows)
+            ) -> ::lightshadedb::Result<()> {
+                ::lightshadedb::Backend::insert_many(self, rows)
             }
 
-            pub fn upsert<T: ::lightshade::Table>(&mut self, row: T) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::upsert(self, row)
+            pub fn upsert<T: ::lightshadedb::Table>(&mut self, row: T) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::upsert(self, row)
             }
 
-            pub fn upsert_many<T: ::lightshade::Table>(
+            pub fn upsert_many<T: ::lightshadedb::Table>(
                 &mut self,
                 rows: impl ::std::iter::IntoIterator<Item = T>,
-            ) -> ::lightshade::Result<u64> {
-                ::lightshade::Backend::upsert_many(self, rows)
+            ) -> ::lightshadedb::Result<u64> {
+                ::lightshadedb::Backend::upsert_many(self, rows)
             }
 
-            pub fn get<T: ::lightshade::Table>(&self, key: T::Key) -> ::lightshade::Result<::std::option::Option<T>> {
-                ::lightshade::Backend::get::<T>(self, key)
+            pub fn get<T: ::lightshadedb::Table>(&self, key: T::Key) -> ::lightshadedb::Result<::std::option::Option<T>> {
+                ::lightshadedb::Backend::get::<T>(self, key)
             }
 
-            pub fn contains<T: ::lightshade::Table>(&self, key: &T::Key) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::contains::<T>(self, key)
+            pub fn contains<T: ::lightshadedb::Table>(&self, key: &T::Key) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::contains::<T>(self, key)
             }
 
-            pub fn update<T: ::lightshade::Table>(&mut self, row: T) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::update::<T>(self, row)
+            pub fn update<T: ::lightshadedb::Table>(&mut self, row: T) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::update::<T>(self, row)
             }
 
-            pub fn patch<T: ::lightshade::Table>(
+            pub fn patch<T: ::lightshadedb::Table>(
                 &mut self,
                 key: T::Key,
                 patch: T::Patch,
-            ) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::patch::<T>(self, key, patch)
+            ) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::patch::<T>(self, key, patch)
             }
 
-            pub fn delete<T: ::lightshade::Table>(&mut self, key: T::Key) -> ::lightshade::Result<bool> {
-                ::lightshade::Backend::delete::<T>(self, key)
+            pub fn delete<T: ::lightshadedb::Table>(&mut self, key: T::Key) -> ::lightshadedb::Result<bool> {
+                ::lightshadedb::Backend::delete::<T>(self, key)
             }
 
-            pub fn count<T: ::lightshade::Table>(&self) -> ::lightshade::Result<u64> {
-                ::lightshade::Backend::count::<T>(self)
+            pub fn count<T: ::lightshadedb::Table>(&self) -> ::lightshadedb::Result<u64> {
+                ::lightshadedb::Backend::count::<T>(self)
             }
 
-            pub fn scan<T: ::lightshade::Table>(&self) -> ::lightshade::Result<::std::vec::Vec<T>> {
-                ::lightshade::Backend::scan::<T>(self)
+            pub fn scan<T: ::lightshadedb::Table>(&self) -> ::lightshadedb::Result<::std::vec::Vec<T>> {
+                ::lightshadedb::Backend::scan::<T>(self)
             }
 
             #(#user_methods)*
         }
 
         #[cfg(feature = "client")]
-        impl ::lightshade::Backend for Client {
-            fn __insert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<()> {
+        impl ::lightshadedb::Backend for Client {
+            fn __insert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<()> {
                 match table {
                     #(#insert,)*
                     #unknown,
                 }
             }
-            fn __insert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>) -> ::lightshade::Result<()> {
+            fn __insert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>) -> ::lightshadedb::Result<()> {
                 match table {
                     #(#insert_many,)*
                     #unknown,
                 }
             }
-            fn __upsert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<bool> {
+            fn __upsert(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<bool> {
                 match table {
                     #(#upsert,)*
                     #unknown,
                 }
             }
-            fn __upsert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>) -> ::lightshade::Result<u64> {
+            fn __upsert_many(&mut self, table: &'static str, rows: ::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>) -> ::lightshadedb::Result<u64> {
                 match table {
                     #(#upsert_many,)*
                     #unknown,
                 }
             }
-            fn __get(&self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<::std::option::Option<::std::vec::Vec<::lightshade::table::Value>>> {
+            fn __get(&self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<::std::option::Option<::std::vec::Vec<::lightshadedb::table::Value>>> {
                 match table {
                     #(#get,)*
                     #unknown,
                 }
             }
-            fn __contains(&self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<bool> {
+            fn __contains(&self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<bool> {
                 match table {
                     #(#contains,)*
                     #unknown,
                 }
             }
-            fn __update(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshade::table::Value>) -> ::lightshade::Result<bool> {
+            fn __update(&mut self, table: &'static str, values: ::std::vec::Vec<::lightshadedb::table::Value>) -> ::lightshadedb::Result<bool> {
                 match table {
                     #(#update,)*
                     #unknown,
                 }
             }
-            fn __delete(&mut self, table: &'static str, key: ::lightshade::table::Value) -> ::lightshade::Result<bool> {
+            fn __delete(&mut self, table: &'static str, key: ::lightshadedb::table::Value) -> ::lightshadedb::Result<bool> {
                 match table {
                     #(#delete,)*
                     #unknown,
                 }
             }
-            fn __count(&self, table: &'static str) -> ::lightshade::Result<u64> {
+            fn __count(&self, table: &'static str) -> ::lightshadedb::Result<u64> {
                 match table {
                     #(#count,)*
                     #unknown,
                 }
             }
-            fn __scan(&self, table: &'static str) -> ::lightshade::Result<::std::vec::Vec<::std::vec::Vec<::lightshade::table::Value>>> {
+            fn __scan(&self, table: &'static str) -> ::lightshadedb::Result<::std::vec::Vec<::std::vec::Vec<::lightshadedb::table::Value>>> {
                 match table {
                     #(#scan,)*
                     #unknown,
                 }
             }
-            fn begin(&mut self) -> ::lightshade::Result<()> { Client::begin(self) }
-            fn commit(&mut self) -> ::lightshade::Result<()> { Client::commit(self) }
-            fn rollback(&mut self) -> ::lightshade::Result<()> { Client::rollback(self) }
+            fn begin(&mut self) -> ::lightshadedb::Result<()> { Client::begin(self) }
+            fn commit(&mut self) -> ::lightshadedb::Result<()> { Client::commit(self) }
+            fn rollback(&mut self) -> ::lightshadedb::Result<()> { Client::rollback(self) }
             fn in_transaction(&self) -> bool { Client::in_transaction(self) }
-            fn transaction<T, F>(&mut self, f: F) -> ::lightshade::Result<T>
-            where F: ::std::ops::FnOnce(&mut Self) -> ::lightshade::Result<T>, Self: ::std::marker::Sized {
+            fn transaction<T, F>(&mut self, f: F) -> ::lightshadedb::Result<T>
+            where F: ::std::ops::FnOnce(&mut Self) -> ::lightshadedb::Result<T>, Self: ::std::marker::Sized {
                 Client::transaction(self, f)
             }
-            fn close(self) -> ::lightshade::Result<()> { Client::close(self) }
+            fn close(self) -> ::lightshadedb::Result<()> { Client::close(self) }
         }
 
         #[cfg(feature = "client")]
@@ -820,13 +820,13 @@ pub(crate) fn async_client_wrapper(
     let unknown = unknown_table_arm();
     let async_crud = async_crud_methods(&async_arms, &unknown);
     let txn_crud = async_crud_methods(&txn_arms, &unknown);
-    let pool_options = quote!(::lightshade::pool::PoolOptions);
+    let pool_options = quote!(::lightshadedb::pool::PoolOptions);
 
     quote! {
         #[cfg(all(feature = "client", feature = "async"))]
         #[derive(Clone, Debug)]
         pub struct AsyncClient {
-            pool: ::lightshade::pool::Pool,
+            pool: ::lightshadedb::pool::Pool,
         }
 
         #[cfg(all(feature = "client", feature = "async"))]
@@ -834,41 +834,41 @@ pub(crate) fn async_client_wrapper(
             pub async fn connect(
                 endpoint: impl ::std::convert::AsRef<::std::path::Path>,
                 options: #pool_options,
-            ) -> ::lightshade::Result<Self> {
-                Self::connect_endpoint(::lightshade::ClientEndpoint::path(endpoint.as_ref()), options).await
+            ) -> ::lightshadedb::Result<Self> {
+                Self::connect_endpoint(::lightshadedb::ClientEndpoint::path(endpoint.as_ref()), options).await
             }
 
             pub async fn connect_endpoint(
-                endpoint: ::lightshade::ClientEndpoint,
+                endpoint: ::lightshadedb::ClientEndpoint,
                 options: #pool_options,
-            ) -> ::lightshade::Result<Self> {
-                let pool = ::lightshade::pool::Pool::new(endpoint, #fingerprint, options).await?;
+            ) -> ::lightshadedb::Result<Self> {
+                let pool = ::lightshadedb::pool::Pool::new(endpoint, #fingerprint, options).await?;
                 ::std::result::Result::Ok(Self { pool })
             }
 
             pub async fn connect_tcp(
                 addr: impl ::std::net::ToSocketAddrs,
                 options: #pool_options,
-            ) -> ::lightshade::Result<Self> {
-                Self::connect_tcp_db(addr, ::lightshade::DEFAULT_DATABASE, options).await
+            ) -> ::lightshadedb::Result<Self> {
+                Self::connect_tcp_db(addr, ::lightshadedb::DEFAULT_DATABASE, options).await
             }
 
             pub async fn connect_tcp_db(
                 addr: impl ::std::net::ToSocketAddrs,
                 database: &str,
                 options: #pool_options,
-            ) -> ::lightshade::Result<Self> {
+            ) -> ::lightshadedb::Result<Self> {
                 let addresses = addr
                     .to_socket_addrs()
-                    .map_err(|source| ::lightshade::Error::io("resolving the TCP address", source))?;
+                    .map_err(|source| ::lightshadedb::Error::io("resolving the TCP address", source))?;
                 let mut last = ::std::option::Option::None;
                 for address in addresses {
-                    let endpoint = ::lightshade::ClientEndpoint::tcp_db(
+                    let endpoint = ::lightshadedb::ClientEndpoint::tcp_db(
                         address.ip().to_string(),
                         address.port(),
                         database,
                     );
-                    match ::lightshade::pool::Pool::new(endpoint, #fingerprint, options.clone()).await {
+                    match ::lightshadedb::pool::Pool::new(endpoint, #fingerprint, options.clone()).await {
                         ::std::result::Result::Ok(pool) => {
                             return ::std::result::Result::Ok(Self { pool });
                         }
@@ -878,8 +878,8 @@ pub(crate) fn async_client_wrapper(
                     }
                 }
                 ::std::result::Result::Err(last.unwrap_or_else(|| {
-                    ::lightshade::Error::io(
-                        "connecting to the Lightshade server",
+                    ::lightshadedb::Error::io(
+                        "connecting to the Lightshade DB server",
                         ::std::io::Error::new(
                             ::std::io::ErrorKind::AddrNotAvailable,
                             "address resolved to no sockets",
@@ -888,18 +888,18 @@ pub(crate) fn async_client_wrapper(
                 }))
             }
 
-            pub fn pool(&self) -> &::lightshade::pool::Pool {
+            pub fn pool(&self) -> &::lightshadedb::pool::Pool {
                 &self.pool
             }
 
-            pub fn endpoint(&self) -> &::lightshade::ClientEndpoint {
+            pub fn endpoint(&self) -> &::lightshadedb::ClientEndpoint {
                 self.pool.endpoint()
             }
 
-            pub async fn begin(&self) -> ::lightshade::Result<Transaction> {
+            pub async fn begin(&self) -> ::lightshadedb::Result<Transaction> {
                 let pooled = self.pool.get().await?;
                 pooled
-                    .request(::lightshade::wire::RequestKind::Begin, 0, &[])
+                    .request(::lightshadedb::wire::RequestKind::Begin, 0, &[])
                     .await?;
                 ::std::result::Result::Ok(Transaction { pooled, open: true })
             }
@@ -910,16 +910,16 @@ pub(crate) fn async_client_wrapper(
 
         #[cfg(all(feature = "client", feature = "async"))]
         pub struct Transaction {
-            pooled: ::lightshade::pool::Pooled,
+            pooled: ::lightshadedb::pool::Pooled,
             open: bool,
         }
 
         #[cfg(all(feature = "client", feature = "async"))]
         impl Transaction {
-            pub async fn commit(mut self) -> ::lightshade::Result<()> {
+            pub async fn commit(mut self) -> ::lightshadedb::Result<()> {
                 let result = self
                     .pooled
-                    .request(::lightshade::wire::RequestKind::Commit, 0, &[])
+                    .request(::lightshadedb::wire::RequestKind::Commit, 0, &[])
                     .await;
                 if result.is_ok() {
                     self.open = false;
@@ -927,10 +927,10 @@ pub(crate) fn async_client_wrapper(
                 result.map(|_| ())
             }
 
-            pub async fn rollback(mut self) -> ::lightshade::Result<()> {
+            pub async fn rollback(mut self) -> ::lightshadedb::Result<()> {
                 let result = self
                     .pooled
-                    .request(::lightshade::wire::RequestKind::Rollback, 0, &[])
+                    .request(::lightshadedb::wire::RequestKind::Rollback, 0, &[])
                     .await;
                 if result.is_ok() {
                     self.open = false;

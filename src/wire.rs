@@ -118,7 +118,7 @@ pub fn connect(
                 }
             }
             Err(Error::io(
-                "connecting to the Lightshade server",
+                "connecting to the Lightshade DB server",
                 last.unwrap_or_else(|| {
                     std::io::Error::new(
                         std::io::ErrorKind::AddrNotAvailable,

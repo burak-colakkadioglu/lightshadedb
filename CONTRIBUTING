@@ -1,4 +1,4 @@
-Contributing to Lightshade
+Contributing to Lightshade DB
 ============================
 
 The full contributor guide lives in the book: docs/src/contributing.md
@@ -11,7 +11,7 @@ The full contributor guide lives in the book: docs/src/contributing.md
 License and relicensing
 -----------------------
 
-Lightshade is dual-licensed MIT OR Apache-2.0 (see LICENSE-MIT and
+Lightshade DB is dual-licensed MIT OR Apache-2.0 (see LICENSE-MIT and
 LICENSE-APACHE-2.0). By submitting a contribution — a pull request, a
 patch, or any other change intended for inclusion — you agree to two
 things:

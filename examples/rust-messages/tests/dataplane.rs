@@ -1,16 +1,16 @@
 #![cfg(feature = "embedded")]
 
 use self::dataplane_store::{Blob, Db, Nums, Opts};
-use lightshade::dataplane;
-use lightshade::table::Value;
-use lightshade::{Error, FieldType};
+use lightshadedb::dataplane;
+use lightshadedb::table::Value;
+use lightshadedb::{Error, FieldType};
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod dataplane_store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Nums {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub tiny: i8,
         pub small: i16,
@@ -20,7 +20,7 @@ pub mod dataplane_store {
     }
 
     pub struct Blob {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub approx: f32,
         pub flag: bool,
@@ -30,7 +30,7 @@ pub mod dataplane_store {
     }
 
     pub struct Opts {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub maybe_note: Option<String>,
         pub maybe_score: Option<i64>,
@@ -39,9 +39,9 @@ pub mod dataplane_store {
         pub maybe_ratio: Option<f32>,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait DataplaneOps {
-        #[lightshade::query(filter = Nums::id.eq(id))]
+        #[lightshadedb::query(filter = Nums::id.eq(id))]
         fn num_by_id(&self, id: i64) -> Result<Vec<Nums>>;
     }
 }
@@ -85,7 +85,7 @@ fn seed() -> Db {
 }
 
 fn values_sorted(db: &Db) -> Vec<Vec<Value>> {
-    use lightshade::Table as _;
+    use lightshadedb::Table as _;
     let mut out = Vec::new();
     let mut nums = db.scan::<Nums>().unwrap();
     nums.sort_by_key(|row| row.id);
@@ -101,12 +101,12 @@ fn values_sorted(db: &Db) -> Vec<Vec<Value>> {
 
 fn table_values<T>(db: &Db) -> Vec<Vec<Value>>
 where
-    T: lightshade::table::TableOps<Db>,
+    T: lightshadedb::table::TableOps<Db>,
 {
     let mut rows = db.scan::<T>().unwrap();
-    rows.sort_by_key(|row| format!("{:?}", <T as lightshade::Table>::to_values(row)));
+    rows.sort_by_key(|row| format!("{:?}", <T as lightshadedb::Table>::to_values(row)));
     rows.iter()
-        .map(|row| <T as lightshade::Table>::to_values(row))
+        .map(|row| <T as lightshadedb::Table>::to_values(row))
         .collect()
 }
 

@@ -5,7 +5,7 @@ a declared query. You need a Rust toolchain and about ten minutes.
 
 > **Crate name.** On release, Lightshade DB ships on crates.io as
 > `lightshadedb`. The code below uses the release dependency; Rust
-> import paths (`lightshade::…`, `#[lightshade::…]`) still show the
+> import paths (`lightshadedb::…`, `#[lightshadedb::…]`) still show the
 > pre-release namespace and track the rename when it lands.
 
 ## 1. Scaffold
@@ -55,7 +55,7 @@ compiler is picky in exactly the ways that save you later:
 
 ```rust
 pub struct Message {
-    #[lightshade(primary_key)]
+    #[lightshadedb(primary_key)]
     pub id: i64,
     pub inbox_id: i64,
     pub sent_at: i64,
@@ -78,25 +78,25 @@ through `&self` and return rows; writes take `&mut self` and return
 affected-row counts:
 
 ```rust
-#[lightshade::operations]
+#[lightshadedb::operations]
 pub trait Messages {
-    #[lightshade::query(
+    #[lightshadedb::query(
         filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false),
         order = (Message::sent_at.desc(), Message::id.desc()),
         limit = limit,
     )]
     fn recent_unread(&self, inbox: i64, limit: i64) -> Result<Vec<Message>>;
 
-    #[lightshade::query(count, filter = Message::inbox_id.eq(inbox))]
+    #[lightshadedb::query(count, filter = Message::inbox_id.eq(inbox))]
     fn inbox_count(&self, inbox: i64) -> Result<i64>;
 
-    #[lightshade::update(
+    #[lightshadedb::update(
         filter = Message::id.eq(message),
         set = (Message::is_read.set(true),),
     )]
     fn mark_read(&mut self, message: i64) -> Result<u64>;
 
-    #[lightshade::delete(filter = Message::sent_at.lt(cutoff))]
+    #[lightshadedb::delete(filter = Message::sent_at.lt(cutoff))]
     fn purge_before(&mut self, cutoff: i64) -> Result<u64>;
 }
 ```
@@ -109,7 +109,7 @@ joins on a count. The full rulebook is [Schema macro](../reference/schema-macro.
 ## 4. Open and use
 
 ```rust
-use lightshade::prelude::*;
+use lightshadedb::prelude::*;
 
 let mut app = store::App::open(store::AppConfig::embedded("notes.lsdb"))?;
 app.insert(store::Message { id: 1, inbox_id: 7, sent_at: 100, is_read: false, body: "hello".into(), priority: None })?;

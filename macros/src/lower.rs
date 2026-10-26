@@ -1,7 +1,7 @@
 use crate::model::{
     DeleteArgs, Operation, OperationKind, Param, Projection, QueryArgs, Table, UpdateArgs,
 };
-use lightshade_codegen::ir::{
+use lightshadedb_codegen::ir::{
     Body, Cmp, Expr, Field, Limit, Operand, Returns, Ty, Value, Workload,
 };
 use proc_macro2::Span;
@@ -66,7 +66,7 @@ pub fn lower(
                 nullable: field.nullable,
             });
         }
-        workload.tables.push(lightshade_codegen::ir::Table {
+        workload.tables.push(lightshadedb_codegen::ir::Table {
             name: table.db_name.clone(),
             fields,
         });
@@ -89,7 +89,7 @@ pub fn lower(
 
     for projection in projections {
         let db_name = snake_case(&projection.ident.to_string());
-        workload.tables.push(lightshade_codegen::ir::Table {
+        workload.tables.push(lightshadedb_codegen::ir::Table {
             name: db_name.clone(),
             fields: projection
                 .fields
@@ -160,14 +160,14 @@ fn push_hidden_crud(workload: &mut Workload, table: &Table, names: &CrudNames) {
     let all_params = table
         .fields
         .iter()
-        .map(|field| lightshade_codegen::ir::Param {
+        .map(|field| lightshadedb_codegen::ir::Param {
             name: field.ident.to_string(),
             ty: field.ir,
             nullable: field.nullable,
         })
         .collect::<Vec<_>>();
     let key = &table.fields[table.primary_key];
-    let key_param = lightshade_codegen::ir::Param {
+    let key_param = lightshadedb_codegen::ir::Param {
         name: key.ident.to_string(),
         ty: key.ir,
         nullable: false,
@@ -178,86 +178,96 @@ fn push_hidden_crud(workload: &mut Workload, table: &Table, names: &CrudNames) {
         right: Operand::Param(key.ident.to_string()),
     };
 
-    workload.operations.push(lightshade_codegen::ir::Operation {
-        name: names.insert.clone(),
-        params: all_params.clone(),
-        returns: Returns::None,
-        body: Body::Insert {
-            table: table.db_name.clone(),
-        },
-    });
+    workload
+        .operations
+        .push(lightshadedb_codegen::ir::Operation {
+            name: names.insert.clone(),
+            params: all_params.clone(),
+            returns: Returns::None,
+            body: Body::Insert {
+                table: table.db_name.clone(),
+            },
+        });
 
-    workload.operations.push(lightshade_codegen::ir::Operation {
-        name: names.get.clone(),
-        params: vec![key_param.clone()],
-        returns: Returns::Many(table.db_name.clone()),
-        body: Body::Query {
-            table: table.db_name.clone(),
-            alias: None,
-            joins: Vec::new(),
-            select: Vec::new(),
-            group_by: Vec::new(),
-            filter: Some(key_eq.clone()),
-            order: vec![(key.ident.to_string(), false)],
-            limit: Some(Limit::Literal(1)),
-            offset: None,
-            count: false,
-        },
-    });
+    workload
+        .operations
+        .push(lightshadedb_codegen::ir::Operation {
+            name: names.get.clone(),
+            params: vec![key_param.clone()],
+            returns: Returns::Many(table.db_name.clone()),
+            body: Body::Query {
+                table: table.db_name.clone(),
+                alias: None,
+                joins: Vec::new(),
+                select: Vec::new(),
+                group_by: Vec::new(),
+                filter: Some(key_eq.clone()),
+                order: vec![(key.ident.to_string(), false)],
+                limit: Some(Limit::Literal(1)),
+                offset: None,
+                count: false,
+            },
+        });
 
-    workload.operations.push(lightshade_codegen::ir::Operation {
-        name: names.contains.clone(),
-        params: vec![key_param.clone()],
-        returns: Returns::One(Ty::I64),
-        body: Body::Query {
-            table: table.db_name.clone(),
-            alias: None,
-            joins: Vec::new(),
-            select: Vec::new(),
-            group_by: Vec::new(),
-            filter: Some(key_eq.clone()),
-            order: Vec::new(),
-            limit: None,
-            offset: None,
-            count: true,
-        },
-    });
+    workload
+        .operations
+        .push(lightshadedb_codegen::ir::Operation {
+            name: names.contains.clone(),
+            params: vec![key_param.clone()],
+            returns: Returns::One(Ty::I64),
+            body: Body::Query {
+                table: table.db_name.clone(),
+                alias: None,
+                joins: Vec::new(),
+                select: Vec::new(),
+                group_by: Vec::new(),
+                filter: Some(key_eq.clone()),
+                order: Vec::new(),
+                limit: None,
+                offset: None,
+                count: true,
+            },
+        });
 
-    workload.operations.push(lightshade_codegen::ir::Operation {
-        name: names.scan.clone(),
-        params: Vec::new(),
-        returns: Returns::Many(table.db_name.clone()),
-        body: Body::Query {
-            table: table.db_name.clone(),
-            alias: None,
-            joins: Vec::new(),
-            select: Vec::new(),
-            group_by: Vec::new(),
-            filter: None,
-            order: vec![(key.ident.to_string(), false)],
-            limit: None,
-            offset: None,
-            count: false,
-        },
-    });
+    workload
+        .operations
+        .push(lightshadedb_codegen::ir::Operation {
+            name: names.scan.clone(),
+            params: Vec::new(),
+            returns: Returns::Many(table.db_name.clone()),
+            body: Body::Query {
+                table: table.db_name.clone(),
+                alias: None,
+                joins: Vec::new(),
+                select: Vec::new(),
+                group_by: Vec::new(),
+                filter: None,
+                order: vec![(key.ident.to_string(), false)],
+                limit: None,
+                offset: None,
+                count: false,
+            },
+        });
 
-    workload.operations.push(lightshade_codegen::ir::Operation {
-        name: names.count.clone(),
-        params: Vec::new(),
-        returns: Returns::One(Ty::I64),
-        body: Body::Query {
-            table: table.db_name.clone(),
-            alias: None,
-            joins: Vec::new(),
-            select: Vec::new(),
-            group_by: Vec::new(),
-            filter: None,
-            order: Vec::new(),
-            limit: None,
-            offset: None,
-            count: true,
-        },
-    });
+    workload
+        .operations
+        .push(lightshadedb_codegen::ir::Operation {
+            name: names.count.clone(),
+            params: Vec::new(),
+            returns: Returns::One(Ty::I64),
+            body: Body::Query {
+                table: table.db_name.clone(),
+                alias: None,
+                joins: Vec::new(),
+                select: Vec::new(),
+                group_by: Vec::new(),
+                filter: None,
+                order: Vec::new(),
+                limit: None,
+                offset: None,
+                count: true,
+            },
+        });
 
     let sets = table
         .fields
@@ -270,26 +280,30 @@ fn push_hidden_crud(workload: &mut Workload, table: &Table, names: &CrudNames) {
             )
         })
         .collect();
-    workload.operations.push(lightshade_codegen::ir::Operation {
-        name: names.update.clone(),
-        params: all_params,
-        returns: Returns::None,
-        body: Body::Update {
-            table: table.db_name.clone(),
-            sets,
-            filter: Some(key_eq.clone()),
-        },
-    });
+    workload
+        .operations
+        .push(lightshadedb_codegen::ir::Operation {
+            name: names.update.clone(),
+            params: all_params,
+            returns: Returns::None,
+            body: Body::Update {
+                table: table.db_name.clone(),
+                sets,
+                filter: Some(key_eq.clone()),
+            },
+        });
 
-    workload.operations.push(lightshade_codegen::ir::Operation {
-        name: names.delete.clone(),
-        params: vec![key_param],
-        returns: Returns::None,
-        body: Body::Delete {
-            table: table.db_name.clone(),
-            filter: Some(key_eq),
-        },
-    });
+    workload
+        .operations
+        .push(lightshadedb_codegen::ir::Operation {
+            name: names.delete.clone(),
+            params: vec![key_param],
+            returns: Returns::None,
+            body: Body::Delete {
+                table: table.db_name.clone(),
+                filter: Some(key_eq),
+            },
+        });
 }
 
 fn lower_operation(
@@ -297,12 +311,12 @@ fn lower_operation(
     tables: &[Table],
     projections: &[Projection],
     lowered_tables: &[LoweredTable],
-) -> syn::Result<lightshade_codegen::ir::Operation> {
+) -> syn::Result<lightshadedb_codegen::ir::Operation> {
     let name = operation.method.sig.ident.to_string();
     let ir_params = operation
         .params
         .iter()
-        .map(|param| lightshade_codegen::ir::Param {
+        .map(|param| lightshadedb_codegen::ir::Param {
             name: param.ident.to_string(),
             ty: param.ir,
             nullable: false,
@@ -388,7 +402,7 @@ fn lower_operation(
             )
         }
     };
-    Ok(lightshade_codegen::ir::Operation {
+    Ok(lightshadedb_codegen::ir::Operation {
         name,
         params: ir_params,
         returns,
@@ -554,7 +568,7 @@ fn resolve_field_ref(
     tables: &[Table],
     lowered: &[LoweredTable],
     sources: &[(&Table, String)],
-) -> syn::Result<(lightshade_codegen::ir::FieldRef, Ty)> {
+) -> syn::Result<(lightshadedb_codegen::ir::FieldRef, Ty)> {
     let (struct_ident, field_ident) = crate::model::field_path(expr).ok_or_else(|| {
         syn::Error::new(
             expr.span(),
@@ -586,7 +600,7 @@ fn resolve_field_ref(
         })?;
     let _ = lowered;
     Ok((
-        lightshade_codegen::ir::FieldRef {
+        lightshadedb_codegen::ir::FieldRef {
             qualifier: (sources.len() > 1).then(|| source.1.clone()),
             field: field.ident.to_string(),
         },
@@ -611,7 +625,7 @@ fn resolve_field_any(
 fn lower_joins(
     exprs: &[RustExpr],
     tables: &[Table],
-) -> syn::Result<Vec<lightshade_codegen::ir::Join>> {
+) -> syn::Result<Vec<lightshadedb_codegen::ir::Join>> {
     let mut joins = Vec::new();
     for expr in exprs {
         let RustExpr::MethodCall(call) = expr else {
@@ -701,14 +715,14 @@ fn lower_joins(
                 "join fields have different types",
             ));
         }
-        joins.push(lightshade_codegen::ir::Join {
+        joins.push(lightshadedb_codegen::ir::Join {
             table: joined.db_name.clone(),
             alias: None,
-            left: lightshade_codegen::ir::FieldRef {
+            left: lightshadedb_codegen::ir::FieldRef {
                 qualifier: Some(left_model.db_name.clone()),
                 field: left_field_ident.to_string(),
             },
-            right: lightshade_codegen::ir::FieldRef {
+            right: lightshadedb_codegen::ir::FieldRef {
                 qualifier: Some(right_model.db_name.clone()),
                 field: right_field_ident.to_string(),
             },
@@ -724,7 +738,7 @@ fn lower_select(
     tables: &[Table],
     projections: &[Projection],
     lowered: &[LoweredTable],
-) -> syn::Result<Vec<lightshade_codegen::ir::SelectItem>> {
+) -> syn::Result<Vec<lightshadedb_codegen::ir::SelectItem>> {
     let mut calls = Vec::new();
     let mut current = expr;
     let base;
@@ -815,7 +829,7 @@ fn lower_select(
                 ),
             ));
         }
-        items.push(lightshade_codegen::ir::SelectItem {
+        items.push(lightshadedb_codegen::ir::SelectItem {
             expr: select_expr,
             alias: field.ident.to_string(),
         });
@@ -828,7 +842,7 @@ fn lower_select_value(
     sources: &[(&Table, String)],
     tables: &[Table],
     lowered: &[LoweredTable],
-) -> syn::Result<(lightshade_codegen::ir::SelectExpr, Ty, bool)> {
+) -> syn::Result<(lightshadedb_codegen::ir::SelectExpr, Ty, bool)> {
     if let RustExpr::MethodCall(call) = expr {
         if call.method == "select" {
             let (field, ty) = resolve_field_ref(&call.receiver, tables, lowered, sources)?;
@@ -840,7 +854,7 @@ fn lower_select_value(
                 .and_then(|table| table.fields.iter().find(|field| field.ident == field_ident))
                 .is_some_and(|field| field.nullable);
             return Ok((
-                lightshade_codegen::ir::SelectExpr::Field(field),
+                lightshadedb_codegen::ir::SelectExpr::Field(field),
                 ty,
                 nullable,
             ));
@@ -869,11 +883,11 @@ fn lower_select_value(
         }
     };
     let aggregate = match method.as_str() {
-        "count" => lightshade_codegen::ir::Aggregate::Count,
-        "min" => lightshade_codegen::ir::Aggregate::Min,
-        "max" => lightshade_codegen::ir::Aggregate::Max,
-        "sum" => lightshade_codegen::ir::Aggregate::Sum,
-        "avg" => lightshade_codegen::ir::Aggregate::Avg,
+        "count" => lightshadedb_codegen::ir::Aggregate::Count,
+        "min" => lightshadedb_codegen::ir::Aggregate::Min,
+        "max" => lightshadedb_codegen::ir::Aggregate::Max,
+        "sum" => lightshadedb_codegen::ir::Aggregate::Sum,
+        "avg" => lightshadedb_codegen::ir::Aggregate::Avg,
         other => {
             return Err(syn::Error::new(
                 expr.span(),
@@ -881,9 +895,9 @@ fn lower_select_value(
             ))
         }
     };
-    if aggregate == lightshade_codegen::ir::Aggregate::Count {
+    if aggregate == lightshadedb_codegen::ir::Aggregate::Count {
         return Ok((
-            lightshade_codegen::ir::SelectExpr::Aggregate {
+            lightshadedb_codegen::ir::SelectExpr::Aggregate {
                 function: aggregate,
                 field: None,
             },
@@ -898,7 +912,7 @@ fn lower_select_value(
     if !ty.is_numeric()
         && !matches!(
             aggregate,
-            lightshade_codegen::ir::Aggregate::Min | lightshade_codegen::ir::Aggregate::Max
+            lightshadedb_codegen::ir::Aggregate::Min | lightshadedb_codegen::ir::Aggregate::Max
         )
     {
         return Err(syn::Error::new(
@@ -908,7 +922,7 @@ fn lower_select_value(
     }
     let result_ty = ty;
     Ok((
-        lightshade_codegen::ir::SelectExpr::Aggregate {
+        lightshadedb_codegen::ir::SelectExpr::Aggregate {
             function: aggregate,
             field: Some(field),
         },
@@ -922,7 +936,7 @@ fn lower_group(
     tables: &[Table],
     lowered: &[LoweredTable],
     sources: &[(&Table, String)],
-) -> syn::Result<lightshade_codegen::ir::FieldRef> {
+) -> syn::Result<lightshadedb_codegen::ir::FieldRef> {
     let RustExpr::MethodCall(call) = expr else {
         return Err(syn::Error::new(
             expr.span(),

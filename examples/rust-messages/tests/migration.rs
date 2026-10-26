@@ -1,15 +1,15 @@
 #![cfg(feature = "embedded")]
 
-use lightshade::prelude::*;
+use lightshadedb::prelude::*;
 
 mod old {
 
-    #[lightshade::schema]
+    #[lightshadedb::schema]
     pub mod store {
 
-        #[lightshade(table = "old_note")]
+        #[lightshadedb(table = "old_note")]
         pub struct OldNote {
-            #[lightshade(primary_key)]
+            #[lightshadedb(primary_key)]
             pub id: i64,
             pub body: String,
             pub score: i32,
@@ -20,22 +20,22 @@ mod old {
 
 mod added {
 
-    #[lightshade::schema]
+    #[lightshadedb::schema]
     pub mod store {
 
-        #[lightshade(table = "note", rename_from = "old_note")]
+        #[lightshadedb(table = "note", rename_from = "old_note")]
         pub struct Note {
-            #[lightshade(primary_key)]
+            #[lightshadedb(primary_key)]
             pub id: i64,
-            #[lightshade(rename_from = body)]
+            #[lightshadedb(rename_from = body)]
             pub text: String,
-            #[lightshade(default = 5)]
+            #[lightshadedb(default = 5)]
             pub priority: i64,
-            #[lightshade(convert_from = i32, with = widen)]
+            #[lightshadedb(convert_from = i32, with = widen)]
             pub score: i64,
         }
 
-        pub fn widen(value: i32) -> lightshade::Result<i64> {
+        pub fn widen(value: i32) -> lightshadedb::Result<i64> {
             Ok(i64::from(value) * 10)
         }
     }
@@ -43,22 +43,22 @@ mod added {
 
 mod reordered {
 
-    #[lightshade::schema]
+    #[lightshadedb::schema]
     pub mod store {
-        use lightshade::prelude::*;
+        use lightshadedb::prelude::*;
 
-        #[lightshade(table = "old_note")]
+        #[lightshadedb(table = "old_note")]
         pub struct Note {
-            #[lightshade(primary_key)]
+            #[lightshadedb(primary_key)]
             pub id: i64,
             pub obsolete: bool,
             pub score: i32,
             pub body: String,
         }
 
-        #[lightshade::operations]
+        #[lightshadedb::operations]
         pub trait Notes {
-            #[lightshade::query(filter = Note::id.ge(1))]
+            #[lightshadedb::query(filter = Note::id.ge(1))]
             fn all_notes(&self) -> Result<Vec<Note>>;
         }
     }
@@ -66,12 +66,12 @@ mod reordered {
 
 mod no_default {
 
-    #[lightshade::schema]
+    #[lightshadedb::schema]
     pub mod store {
 
-        #[lightshade(table = "old_note")]
+        #[lightshadedb(table = "old_note")]
         pub struct Note {
-            #[lightshade(primary_key)]
+            #[lightshadedb(primary_key)]
             pub id: i64,
             pub body: String,
             pub score: i32,
@@ -83,12 +83,12 @@ mod no_default {
 
 mod no_conversion {
 
-    #[lightshade::schema]
+    #[lightshadedb::schema]
     pub mod store {
 
-        #[lightshade(table = "old_note")]
+        #[lightshadedb(table = "old_note")]
         pub struct Note {
-            #[lightshade(primary_key)]
+            #[lightshadedb(primary_key)]
             pub id: i64,
             pub body: String,
             pub score: i64,

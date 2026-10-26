@@ -1,57 +1,57 @@
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod catalog {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Product {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub sku: String,
         pub category: i64,
         pub price: i64,
         pub name: String,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Catalog {
-        #[lightshade::query(filter = Product::sku.eq(wanted), limit = 1)]
+        #[lightshadedb::query(filter = Product::sku.eq(wanted), limit = 1)]
         fn get_product(&self, wanted: String) -> Result<Vec<Product>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Product::category.eq(wanted),
             order = (Product::price.asc(), Product::sku.asc()),
             limit = limit,
         )]
         fn category_page(&self, wanted: i64, limit: i64) -> Result<Vec<Product>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Product::price.le(maximum),
             order = (Product::price.asc(), Product::sku.asc()),
             limit = 50,
         )]
         fn cheap_products(&self, maximum: i64) -> Result<Vec<Product>>;
 
-        #[lightshade::query(count, filter = Product::category.eq(wanted))]
+        #[lightshadedb::query(count, filter = Product::category.eq(wanted))]
         fn category_count(&self, wanted: i64) -> Result<i64>;
 
-        #[lightshade::query(count, filter = Product::price.ge(0))]
+        #[lightshadedb::query(count, filter = Product::price.ge(0))]
         fn product_count(&self) -> Result<i64>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Product::sku.eq(wanted_sku),
             set = (Product::price.set(wanted_price),),
         )]
         fn update_price(&mut self, wanted_sku: String, wanted_price: i64) -> Result<u64>;
 
-        #[lightshade::delete(filter = Product::sku.eq(wanted_sku))]
+        #[lightshadedb::delete(filter = Product::sku.eq(wanted_sku))]
         fn remove_product(&mut self, wanted_sku: String) -> Result<u64>;
     }
 }
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod events {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Event {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub tenant: i64,
         pub ts: i64,
@@ -59,69 +59,69 @@ pub mod events {
         pub value: i64,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Events {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Event::tenant.eq(wanted) & Event::ts.ge(since),
             order = (Event::ts.asc(), Event::id.asc()),
             limit = 100,
         )]
         fn tenant_window(&self, wanted: i64, since: i64) -> Result<Vec<Event>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Event::kind.eq(wanted),
             order = (Event::ts.desc(), Event::id.desc()),
             limit = 50,
         )]
         fn kind_recent(&self, wanted: i64) -> Result<Vec<Event>>;
 
-        #[lightshade::delete(filter = Event::id.eq(event))]
+        #[lightshadedb::delete(filter = Event::id.eq(event))]
         fn purge_event(&mut self, event: i64) -> Result<u64>;
 
-        #[lightshade::query(count, filter = Event::tenant.eq(wanted))]
+        #[lightshadedb::query(count, filter = Event::tenant.eq(wanted))]
         fn tenant_count(&self, wanted: i64) -> Result<i64>;
     }
 }
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod kv {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Kv {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub value: String,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait KvStore {
-        #[lightshade::query(filter = Kv::id.eq(wanted), limit = 1)]
+        #[lightshadedb::query(filter = Kv::id.eq(wanted), limit = 1)]
         fn get_kv(&self, wanted: i64) -> Result<Vec<Kv>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Kv::id.ge(start),
             order = (Kv::id.asc(),),
             limit = limit,
         )]
         fn scan_kv(&self, start: i64, limit: i64) -> Result<Vec<Kv>>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Kv::id.eq(wanted),
             set = (Kv::value.set(wanted_value),),
         )]
         fn update_kv(&mut self, wanted: i64, wanted_value: String) -> Result<u64>;
 
-        #[lightshade::query(count, filter = Kv::id.ge(0))]
+        #[lightshadedb::query(count, filter = Kv::id.ge(0))]
         fn kv_count(&self) -> Result<i64>;
     }
 }
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod sessions {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Session {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub user: i64,
         pub last_seen: i64,
@@ -129,21 +129,21 @@ pub mod sessions {
         pub token: String,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Sessions {
-        #[lightshade::query(filter = Session::id.eq(session), limit = 1)]
+        #[lightshadedb::query(filter = Session::id.eq(session), limit = 1)]
         fn get_session(&self, session: i64) -> Result<Vec<Session>>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Session::id.eq(session),
             set = (Session::last_seen.set(now),),
         )]
         fn touch_session(&mut self, session: i64, now: i64) -> Result<u64>;
 
-        #[lightshade::delete(filter = Session::id.eq(session))]
+        #[lightshadedb::delete(filter = Session::id.eq(session))]
         fn end_session(&mut self, session: i64) -> Result<u64>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             count,
             filter = Session::user.eq(wanted) & Session::active.eq(true),
         )]
@@ -151,12 +151,12 @@ pub mod sessions {
     }
 }
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod order_book {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Order {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub customer: i64,
         pub created_at: i64,
@@ -164,40 +164,40 @@ pub mod order_book {
         pub total: i64,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct CustomerTotal {
         pub customer: i64,
         pub orders: i64,
         pub spend: i64,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait OrderBook {
-        #[lightshade::query(filter = Order::id.eq(order), limit = 1)]
+        #[lightshadedb::query(filter = Order::id.eq(order), limit = 1)]
         fn get_order(&self, order: i64) -> Result<Vec<Order>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Order::customer.eq(wanted),
             order = (Order::created_at.desc(), Order::id.desc()),
             limit = limit,
         )]
         fn customer_orders(&self, wanted: i64, limit: i64) -> Result<Vec<Order>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Order::status.eq(wanted) & Order::created_at.ge(since),
             order = (Order::created_at.asc(), Order::id.asc()),
             limit = 100,
         )]
         fn status_window(&self, wanted: i64, since: i64) -> Result<Vec<Order>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Order::created_at.ge(since),
             order = (Order::created_at.desc(), Order::id.desc()),
             limit = 100,
         )]
         fn recent_orders(&self, since: i64) -> Result<Vec<Order>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Order,
             select = CustomerTotal::select()
                 .customer(Order::customer.select())
@@ -208,36 +208,36 @@ pub mod order_book {
         )]
         fn customer_total(&self, wanted: i64) -> Result<Vec<CustomerTotal>>;
 
-        #[lightshade::query(count, filter = Order::status.eq(wanted))]
+        #[lightshadedb::query(count, filter = Order::status.eq(wanted))]
         fn status_count(&self, wanted: i64) -> Result<i64>;
 
-        #[lightshade::query(count, filter = Order::id.ge(0))]
+        #[lightshadedb::query(count, filter = Order::id.ge(0))]
         fn order_count(&self) -> Result<i64>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Order::id.eq(order),
             set = (Order::status.set(wanted_status),),
         )]
         fn mark_status(&mut self, order: i64, wanted_status: i64) -> Result<u64>;
 
-        #[lightshade::delete(filter = Order::id.eq(order))]
+        #[lightshadedb::delete(filter = Order::id.eq(order))]
         fn delete_order(&mut self, order: i64) -> Result<u64>;
     }
 }
 
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod inbox_digest {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Inbox {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub owner: String,
     }
 
-    #[lightshade(table = "messages")]
+    #[lightshadedb(table = "messages")]
     pub struct Msg {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub inbox_id: i64,
         pub sent_at: i64,
@@ -245,7 +245,7 @@ pub mod inbox_digest {
         pub body: String,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct Digest {
         pub owner: String,
         pub total: i64,
@@ -254,7 +254,7 @@ pub mod inbox_digest {
         pub span: i64,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct Summary {
         pub total: i64,
         pub oldest: i64,
@@ -263,31 +263,31 @@ pub mod inbox_digest {
         pub span: i64,
     }
 
-    #[lightshade(skip)]
+    #[lightshadedb(skip)]
     pub struct Excerpt {
         pub id: i64,
         pub owner: String,
         pub body: String,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Digests {
-        #[lightshade::query(filter = Msg::id.eq(message), limit = 1)]
+        #[lightshadedb::query(filter = Msg::id.eq(message), limit = 1)]
         fn get_message(&self, message: i64) -> Result<Vec<Msg>>;
 
-        #[lightshade::query(count, filter = Msg::id.ge(0))]
+        #[lightshadedb::query(count, filter = Msg::id.ge(0))]
         fn message_count(&self) -> Result<i64>;
 
-        #[lightshade::update(
+        #[lightshadedb::update(
             filter = Msg::id.eq(message),
             set = (Msg::is_read.set(true),),
         )]
         fn mark_read(&mut self, message: i64) -> Result<u64>;
 
-        #[lightshade::delete(filter = Msg::id.eq(message))]
+        #[lightshadedb::delete(filter = Msg::id.eq(message))]
         fn delete_message(&mut self, message: i64) -> Result<u64>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Msg,
             joins = (Inbox.join_on(Msg::inbox_id.eq_field(Inbox::id)),),
             filter = Msg::is_read.eq(false),
@@ -302,7 +302,7 @@ pub mod inbox_digest {
         )]
         fn unread_digest(&self) -> Result<Vec<Digest>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Msg,
             select = Summary::select()
                 .total(count())
@@ -314,7 +314,7 @@ pub mod inbox_digest {
         )]
         fn overall(&self) -> Result<Vec<Summary>>;
 
-        #[lightshade::query(
+        #[lightshadedb::query(
             from = Msg,
             joins = (Inbox.join_on(Msg::inbox_id.eq_field(Inbox::id)),),
             filter = Msg::sent_at.ge(minimum),
