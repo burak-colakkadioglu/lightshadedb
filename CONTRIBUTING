@@ -1,0 +1,35 @@
+Contributing to Lightshade
+============================
+
+The full contributor guide lives in the book: docs/src/contributing.md
+(build it with `mdbook build docs`). The short version:
+
+- The tree stays green: fmt, clippy -D warnings, workspace tests,
+  and scripts/matrix.sh --tests pass on every commit.
+- No comments in code, ever. Explain it in the book instead.
+
+License and relicensing
+-----------------------
+
+Lightshade is dual-licensed MIT OR Apache-2.0 (see LICENSE-MIT and
+LICENSE-APACHE-2.0). By submitting a contribution — a pull request, a
+patch, or any other change intended for inclusion — you agree to two
+things:
+
+1. Your contribution is licensed to the project under those same
+   MIT OR Apache-2.0 terms, and
+2. you grant the project maintainer the right to relicense your
+   contribution, alone or as part of the project, under any present
+   or future license terms, including commercial ones, without
+   further approval or compensation.
+
+That second clause is deliberate: it keeps the project able to change
+its license later (for example, toward a source-available license if
+a cloud provider ever builds a business on this code without paying
+for it). If you are not willing to grant that, do not contribute.
+
+This is plain language, not legal advice. The standard license texts
+in this directory are the binding terms; this file states the
+project's intent for contributions on top of them.
+
+Copyright (c) 2026 Burak Çolakkadıoğlu

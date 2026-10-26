@@ -1,0 +1,68 @@
+# Suite workload: order history with customer, status, and recency access paths.
+#
+# Exercises compound ordered indexes, grouped aggregates, maintained status
+# counters, point updates, and primary-key deletes over a wide numeric table.
+
+table orders {
+    id: i64 primary_key
+    customer: i64
+    created_at: i64
+    status: i64
+    total: i64
+}
+
+table customer_totals {
+    customer: i64 primary_key
+    orders: i64
+    spend: i64
+}
+
+operation insert_order(id: i64, customer: i64, created_at: i64, status: i64, total: i64) {
+    insert orders
+}
+
+operation get_order(order: i64) -> many orders {
+    filter id == order
+    limit 1
+}
+
+operation customer_orders(wanted: i64, limit: i64) -> many orders {
+    filter customer == wanted
+    order by created_at desc, id desc
+    limit limit
+}
+
+operation status_window(wanted: i64, since: i64) -> many orders {
+    filter status == wanted and created_at >= since
+    order by created_at asc, id asc
+    limit 100
+}
+
+operation recent_orders(since: i64) -> many orders {
+    filter created_at >= since
+    order by created_at desc, id desc
+    limit 100
+}
+
+operation customer_total(wanted: i64) -> many customer_totals {
+    from orders
+    select customer as customer, count() as orders, sum(total) as spend
+    filter customer == wanted
+    group by customer
+}
+
+operation status_count(wanted: i64) -> one i64 {
+    count orders where status == wanted
+}
+
+operation order_count() -> one i64 {
+    count orders where id >= 0
+}
+
+operation mark_status(order: i64, wanted_status: i64) {
+    update orders set status = wanted_status where id == order
+}
+
+operation delete_order(order: i64) {
+    delete orders where id == order
+}

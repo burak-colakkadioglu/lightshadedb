@@ -1,0 +1,36 @@
+# Suite workload: append-heavy tenant events with two access paths and purges.
+#
+# The compiler maintains an index for each ordered query, a tenant counter, and
+# removes rows from every maintained structure when a purge deletes by PK.
+
+table events {
+    id: i64 primary_key
+    tenant: i64
+    ts: i64
+    kind: i64
+    value: i64
+}
+
+operation insert_event(id: i64, tenant: i64, ts: i64, kind: i64, value: i64) {
+    insert events
+}
+
+operation tenant_window(wanted: i64, since: i64) -> many events {
+    filter tenant == wanted and ts >= since
+    order by ts asc, id asc
+    limit 100
+}
+
+operation kind_recent(wanted: i64) -> many events {
+    filter kind == wanted
+    order by ts desc, id desc
+    limit 50
+}
+
+operation purge_event(event: i64) {
+    delete events where id == event
+}
+
+operation tenant_count(wanted: i64) -> one i64 {
+    count events where tenant == wanted
+}

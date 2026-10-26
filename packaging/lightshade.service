@@ -1,0 +1,38 @@
+[Unit]
+Description=Lightshade tenant server
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=lightshade
+Group=lightshade
+WorkingDirectory=/srv/lightshade
+EnvironmentFile=/etc/lightshade/messages.env
+ExecStart=/usr/local/bin/lightshade serve /srv/lightshade/messages.lightshade /srv/lightshade/messages.lsdb
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+LimitNOFILE=65536
+MemoryMax=2G
+TasksMax=256
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/lightshade /var/log/lightshade /var/backups/lightshade
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,25 @@
+[package]
+name = "ls-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+default = ["host", "client"]
+host = ["embedded", "lightshade/host"]
+client = ["lightshade/client"]
+embedded = []
+async = ["lightshade/async"]
+
+[[bin]]
+name = "ls-bench"
+path = "src/main.rs"
+
+[dependencies]
+lightshade = { path = "../.." }
+postgres = "0.19"
+postgresql_embedded = { version = "0.22", features = ["blocking", "tokio"] }
+redb = "3"
+rusqlite = { version = "0.37", features = ["bundled"] }
+sysinfo = "0.37"
+tempfile = { workspace = true }

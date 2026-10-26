@@ -1,0 +1,26 @@
+# Shared workload for the three-app example.
+#
+# The network host owns this schema and the database file. Both clients speak
+# the generated wire protocol instead of opening the database themselves.
+
+table notes {
+    id: i64 primary_key
+    title: text
+    body: text
+    created_at: i64
+}
+
+operation add_note(id: i64, title: text, body: text, created_at: i64) {
+    insert notes
+}
+
+operation list_notes() -> many notes {
+    filter id >= 0
+    order by created_at desc, id desc
+    limit 50
+}
+
+operation get_note(id: i64) -> many notes {
+    filter id == id
+    limit 1
+}

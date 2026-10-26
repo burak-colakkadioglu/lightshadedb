@@ -1,0 +1,85 @@
+# Projection, aggregation, grouping, and inner-join example.
+
+table inboxes {
+    id: i64 primary_key
+    owner: text
+}
+
+table messages {
+    id: i64 primary_key
+    inbox_id: i64
+    sent_at: i64
+    is_read: bool
+    body: text
+}
+
+table digest {
+    owner: text primary_key
+    total: i64
+    newest: i64
+    oldest: i64
+    span: i64
+}
+
+table summary {
+    total: i64 primary_key
+    oldest: i64
+    newest: i64
+    average: i64
+    span: i64
+}
+
+table excerpt {
+    id: i64 primary_key
+    owner: text
+    body: text
+}
+
+operation add_inbox(id: i64, owner: text) {
+    insert inboxes
+}
+
+operation add_message(id: i64, inbox_id: i64, sent_at: i64, is_read: bool, body: text) {
+    insert messages
+}
+
+operation get_message(message: i64) -> many messages {
+    filter id == message
+    limit 1
+}
+
+operation message_count() -> one i64 {
+    count messages where id >= 0
+}
+
+operation mark_read(message: i64) {
+    update messages set is_read = true where id == message
+}
+
+operation delete_message(message: i64) {
+    delete messages where id == message
+}
+
+operation unread_digest() -> many digest {
+    from messages as m
+    join inboxes as i on m.inbox_id == i.id
+    select i.owner as owner, count() as total, max(m.sent_at) as newest, min(m.sent_at) as oldest, sum(m.sent_at) as span
+    filter m.is_read == false
+    group by i.owner
+    order by total desc, owner asc
+}
+
+operation overall() -> many summary {
+    from messages
+    select count() as total, min(sent_at) as oldest, max(sent_at) as newest, avg(sent_at) as average, sum(sent_at) as span
+    filter sent_at >= 0
+}
+
+operation excerpts(minimum: i64) -> many excerpt {
+    from messages as m
+    join inboxes as i on m.inbox_id == i.id
+    select m.id as id, i.owner as owner, m.body as body
+    filter m.sent_at >= minimum
+    order by owner asc, id desc
+    limit 2
+}

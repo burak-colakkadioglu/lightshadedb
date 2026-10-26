@@ -1,0 +1,48 @@
+# Suite workload: text-keyed products with category and price access paths.
+#
+# Exercises text primary keys, compound ordered indexes, equality counters,
+# price updates, and text-keyed deletes.
+
+table products {
+    sku: text primary_key
+    category: i64
+    price: i64
+    name: text
+}
+
+operation add_product(sku: text, category: i64, price: i64, name: text) {
+    insert products
+}
+
+operation get_product(wanted: text) -> many products {
+    filter sku == wanted
+    limit 1
+}
+
+operation category_page(wanted: i64, limit: i64) -> many products {
+    filter category == wanted
+    order by price asc, sku asc
+    limit limit
+}
+
+operation cheap_products(maximum: i64) -> many products {
+    filter price <= maximum
+    order by price asc, sku asc
+    limit 50
+}
+
+operation category_count(wanted: i64) -> one i64 {
+    count products where category == wanted
+}
+
+operation product_count() -> one i64 {
+    count products where price >= 0
+}
+
+operation update_price(wanted_sku: text, wanted_price: i64) {
+    update products set price = wanted_price where sku == wanted_sku
+}
+
+operation remove_product(wanted_sku: text) {
+    delete products where sku == wanted_sku
+}

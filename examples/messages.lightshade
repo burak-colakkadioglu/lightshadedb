@@ -1,0 +1,30 @@
+# Milestone 0 workload: a typed message store.
+#
+# The interpreter executes this generically. The compiler specializes it into
+# typed rows, an ordered lookup index, and a maintained unread counter.
+
+table messages {
+    id: i64 primary_key
+    inbox_id: i64
+    sent_at: i64
+    is_read: bool
+    body: text
+}
+
+operation insert_message(id: i64, inbox_id: i64, sent_at: i64, is_read: bool, body: text) {
+    insert messages
+}
+
+operation recent_messages(inbox: i64, limit: i64) -> many messages {
+    filter inbox_id == inbox
+    order by sent_at desc, id desc
+    limit limit
+}
+
+operation unread_count(inbox: i64) -> one i64 {
+    count messages where inbox_id == inbox and is_read == false
+}
+
+operation mark_read(message: i64) {
+    update messages set is_read = true where id == message
+}

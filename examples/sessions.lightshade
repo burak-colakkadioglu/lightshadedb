@@ -1,0 +1,34 @@
+# Suite workload: session point lookups, touches, expirations, and active counts.
+#
+# This workload has no ordered scans. It is the counter/point-update counterpart
+# to `events`: most of the win should come from maintained state and cheap
+# primary-key mutations.
+
+table sessions {
+    id: i64 primary_key
+    user: i64
+    last_seen: i64
+    active: bool
+    token: text
+}
+
+operation create_session(id: i64, user: i64, last_seen: i64, active: bool, token: text) {
+    insert sessions
+}
+
+operation get_session(session: i64) -> many sessions {
+    filter id == session
+    limit 1
+}
+
+operation touch_session(session: i64, now: i64) {
+    update sessions set last_seen = now where id == session
+}
+
+operation end_session(session: i64) {
+    delete sessions where id == session
+}
+
+operation active_sessions(wanted: i64) -> one i64 {
+    count sessions where user == wanted and active == true
+}

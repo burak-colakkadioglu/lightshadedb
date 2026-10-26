@@ -1,0 +1,606 @@
+const __LS_SHA256_INITIAL: [u32; 8] = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+];
+const __LS_SHA256_K: [u32; 64] = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+    0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+    0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+    0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+    0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+];
+
+fn __ls_cli_sha256(__ls_data: &[u8]) -> [u8; 32] {
+    let mut __ls_state = __LS_SHA256_INITIAL;
+    let __ls_bit_length = (__ls_data.len() as u64).wrapping_mul(8);
+    let mut __ls_message = __ls_data.to_vec();
+    __ls_message.push(0x80);
+    while __ls_message.len() % 64 != 56 {
+        __ls_message.push(0);
+    }
+    __ls_message.extend_from_slice(&__ls_bit_length.to_be_bytes());
+    for __ls_chunk in __ls_message.chunks_exact(64) {
+        let mut __ls_words = [0u32; 64];
+        for __ls_i in 0..16 {
+            let __ls_at = __ls_i * 4;
+            __ls_words[__ls_i] = u32::from_be_bytes([
+                __ls_chunk[__ls_at],
+                __ls_chunk[__ls_at + 1],
+                __ls_chunk[__ls_at + 2],
+                __ls_chunk[__ls_at + 3],
+            ]);
+        }
+        for __ls_i in 16..64 {
+            let __ls_s0 = __ls_words[__ls_i - 15].rotate_right(7)
+                ^ __ls_words[__ls_i - 15].rotate_right(18)
+                ^ (__ls_words[__ls_i - 15] >> 3);
+            let __ls_s1 = __ls_words[__ls_i - 2].rotate_right(17)
+                ^ __ls_words[__ls_i - 2].rotate_right(19)
+                ^ (__ls_words[__ls_i - 2] >> 10);
+            __ls_words[__ls_i] = __ls_words[__ls_i - 16]
+                .wrapping_add(__ls_s0)
+                .wrapping_add(__ls_words[__ls_i - 7])
+                .wrapping_add(__ls_s1);
+        }
+        let mut __ls_a = __ls_state[0];
+        let mut __ls_b = __ls_state[1];
+        let mut __ls_c = __ls_state[2];
+        let mut __ls_d = __ls_state[3];
+        let mut __ls_e = __ls_state[4];
+        let mut __ls_f = __ls_state[5];
+        let mut __ls_g = __ls_state[6];
+        let mut __ls_h = __ls_state[7];
+        for __ls_i in 0..64 {
+            let __ls_s1 = __ls_e.rotate_right(6)
+                ^ __ls_e.rotate_right(11)
+                ^ __ls_e.rotate_right(25);
+            let __ls_choice = (__ls_e & __ls_f) ^ ((!__ls_e) & __ls_g);
+            let __ls_temp1 = __ls_h
+                .wrapping_add(__ls_s1)
+                .wrapping_add(__ls_choice)
+                .wrapping_add(__LS_SHA256_K[__ls_i])
+                .wrapping_add(__ls_words[__ls_i]);
+            let __ls_s0 = __ls_a.rotate_right(2)
+                ^ __ls_a.rotate_right(13)
+                ^ __ls_a.rotate_right(22);
+            let __ls_majority = (__ls_a & __ls_b) ^ (__ls_a & __ls_c) ^ (__ls_b & __ls_c);
+            let __ls_temp2 = __ls_s0.wrapping_add(__ls_majority);
+            __ls_h = __ls_g;
+            __ls_g = __ls_f;
+            __ls_f = __ls_e;
+            __ls_e = __ls_d.wrapping_add(__ls_temp1);
+            __ls_d = __ls_c;
+            __ls_c = __ls_b;
+            __ls_b = __ls_a;
+            __ls_a = __ls_temp1.wrapping_add(__ls_temp2);
+        }
+        __ls_state[0] = __ls_state[0].wrapping_add(__ls_a);
+        __ls_state[1] = __ls_state[1].wrapping_add(__ls_b);
+        __ls_state[2] = __ls_state[2].wrapping_add(__ls_c);
+        __ls_state[3] = __ls_state[3].wrapping_add(__ls_d);
+        __ls_state[4] = __ls_state[4].wrapping_add(__ls_e);
+        __ls_state[5] = __ls_state[5].wrapping_add(__ls_f);
+        __ls_state[6] = __ls_state[6].wrapping_add(__ls_g);
+        __ls_state[7] = __ls_state[7].wrapping_add(__ls_h);
+    }
+    let mut __ls_output = [0u8; 32];
+    for (__ls_i, __ls_word) in __ls_state.iter().enumerate() {
+        __ls_output[__ls_i * 4..__ls_i * 4 + 4].copy_from_slice(&__ls_word.to_be_bytes());
+    }
+    __ls_output
+}
+
+fn __ls_cli_hash_eq(__ls_left: &[u8; 32], __ls_right: &[u8; 32]) -> bool {
+    let mut __ls_difference = 0u8;
+    for __ls_index in 0..32 {
+        __ls_difference |= __ls_left[__ls_index] ^ __ls_right[__ls_index];
+    }
+    __ls_difference == 0
+}
+
+fn __ls_cli_hex_nibble(__ls_byte: u8) -> Option<u8> {
+    match __ls_byte {
+        b'0'..=b'9' => Some(__ls_byte - b'0'),
+        b'a'..=b'f' => Some(__ls_byte - b'a' + 10),
+        b'A'..=b'F' => Some(__ls_byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn __ls_cli_parse_hash(__ls_text: &str) -> Option<[u8; 32]> {
+    let __ls_bytes = __ls_text.as_bytes();
+    if __ls_bytes.len() != 64 {
+        return None;
+    }
+    let mut __ls_hash = [0u8; 32];
+    for __ls_index in 0..32 {
+        let __ls_high = __ls_cli_hex_nibble(__ls_bytes[__ls_index * 2])?;
+        let __ls_low = __ls_cli_hex_nibble(__ls_bytes[__ls_index * 2 + 1])?;
+        __ls_hash[__ls_index] = (__ls_high << 4) | __ls_low;
+    }
+    Some(__ls_hash)
+}
+
+fn __ls_cli_credential_id() -> String {
+    std::env::var("LIGHTSHADE_CREDENTIAL_ID").unwrap_or_default()
+}
+
+fn __ls_cli_credential_secret() -> String {
+    std::env::var("LIGHTSHADE_CREDENTIAL_SECRET").unwrap_or_default()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum __LsRole {
+    Reader,
+    Writer,
+    Admin,
+}
+
+impl __LsRole {
+    fn parse(__ls_value: &str) -> Option<Self> {
+        match __ls_value {
+            "reader" => Some(Self::Reader),
+            "writer" => Some(Self::Writer),
+            "admin" => Some(Self::Admin),
+            _ => None,
+        }
+    }
+
+    fn allows_write(self) -> bool {
+        !matches!(self, Self::Reader)
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Reader => "reader",
+            Self::Writer => "writer",
+            Self::Admin => "admin",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct __LsCredential {
+    role: __LsRole,
+    verifier: [u8; 32],
+}
+
+struct __LsCredentials {
+    entries: BTreeMap<String, __LsCredential>,
+}
+
+struct __LsIdentity {
+    id: String,
+    role: __LsRole,
+    verifier: [u8; 32],
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct __LsCredentialStamp {
+    len: u64,
+    modified: u128,
+    identity: u128,
+    changed: i64,
+    mode: u32,
+}
+
+fn __ls_cli_credential_stamp(__ls_metadata: &std::fs::Metadata) -> __LsCredentialStamp {
+    let __ls_modified = __ls_metadata
+        .modified()
+        .ok()
+        .and_then(|__ls_time| __ls_time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|__ls_duration| __ls_duration.as_nanos())
+        .unwrap_or(0);
+    #[cfg(unix)]
+    let (__ls_identity, __ls_changed, __ls_mode) = {
+        use std::os::unix::fs::MetadataExt;
+        (
+            ((__ls_metadata.dev() as u128) << 64) | __ls_metadata.ino() as u128,
+            __ls_metadata.ctime(),
+            __ls_metadata.mode(),
+        )
+    };
+    #[cfg(not(unix))]
+    let (__ls_identity, __ls_changed, __ls_mode) = (0u128, 0i64, 0u32);
+    __LsCredentialStamp {
+        len: __ls_metadata.len(),
+        modified: __ls_modified,
+        identity: __ls_identity,
+        changed: __ls_changed,
+        mode: __ls_mode,
+    }
+}
+
+fn __ls_cli_credentials_stamp(
+    __ls_path: &str,
+) -> Result<Option<__LsCredentialStamp>, String> {
+    match std::fs::symlink_metadata(__ls_path) {
+        Ok(__ls_metadata) => {
+            if __ls_metadata.file_type().is_symlink() || !__ls_metadata.file_type().is_file() {
+                return Err(format!("`{__ls_path}` must be a regular file"));
+            }
+            Ok(Some(__ls_cli_credential_stamp(&__ls_metadata)))
+        }
+        Err(__ls_error) if __ls_error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(__ls_error) => Err(format!("cannot read `{__ls_path}`: {__ls_error}")),
+    }
+}
+
+struct __LsCredentialStore {
+    path: String,
+    interval: Option<std::time::Duration>,
+    credentials: __LsCredentials,
+    stamp: Option<__LsCredentialStamp>,
+    checked: std::time::Instant,
+}
+
+impl __LsCredentialStore {
+    fn new() -> Result<Self, String> {
+        let __ls_path = std::env::var("LIGHTSHADE_CREDENTIALS")
+            .map_err(|_| "LIGHTSHADE_CREDENTIALS is required".to_string())?;
+        let __ls_credentials = __ls_cli_read_credentials(&__ls_path)?;
+        let __ls_stamp = __ls_cli_credentials_stamp(&__ls_path)?;
+        let __ls_millis = std::env::var("LIGHTSHADE_CREDENTIALS_RELOAD_MS")
+            .ok()
+            .and_then(|__ls_value| __ls_value.parse::<u64>().ok())
+            .unwrap_or(1000);
+        let __ls_interval = (__ls_millis > 0)
+            .then(|| std::time::Duration::from_millis(__ls_millis));
+        Ok(Self {
+            path: __ls_path,
+            interval: __ls_interval,
+            credentials: __ls_credentials,
+            stamp: __ls_stamp,
+            checked: std::time::Instant::now(),
+        })
+    }
+
+    fn maybe_reload(&mut self, __ls_audit: &__LsAudit) {
+        let Some(__ls_interval) = self.interval else {
+            return;
+        };
+        if self.checked.elapsed() < __ls_interval {
+            return;
+        }
+        self.checked = std::time::Instant::now();
+        let __ls_stamp = match __ls_cli_credentials_stamp(&self.path) {
+            Ok(__ls_stamp) => __ls_stamp,
+            Err(__ls_error) => {
+                __ls_audit.event(
+                    "credentials_reload_failed",
+                    0,
+                    "-",
+                    None,
+                    "unreadable_credentials",
+                );
+                eprintln!("cannot inspect credentials: {__ls_error}; keeping the previous credentials");
+                return;
+            }
+        };
+        if __ls_stamp == self.stamp {
+            return;
+        }
+        self.stamp = __ls_stamp;
+        match __ls_cli_read_credentials(&self.path) {
+            Ok(__ls_credentials) => {
+                __ls_cli_audit_credential_changes(&self.credentials, &__ls_credentials, __ls_audit);
+                self.credentials = __ls_credentials;
+                __ls_audit.event("credentials_reloaded", 0, "-", None, "credentials_file");
+            }
+            Err(__ls_error) => {
+                __ls_audit.event(
+                    "credentials_reload_failed",
+                    0,
+                    "-",
+                    None,
+                    "invalid_credentials",
+                );
+                eprintln!("cannot reload credentials: {__ls_error}; keeping the previous credentials");
+            }
+        }
+    }
+
+    fn identity_is_current(&self, __ls_identity: &__LsIdentity) -> bool {
+        self.credentials
+            .entries
+            .get(&__ls_identity.id)
+            .is_some_and(|__ls_credential| {
+                __ls_credential.role == __ls_identity.role
+                    && __ls_cli_hash_eq(&__ls_credential.verifier, &__ls_identity.verifier)
+            })
+    }
+}
+
+fn __ls_cli_credentials_lock(
+    __ls_credentials: &std::sync::Mutex<__LsCredentialStore>,
+) -> std::sync::MutexGuard<'_, __LsCredentialStore> {
+    match __ls_credentials.lock() {
+        Ok(__ls_guard) => __ls_guard,
+        Err(_) => {
+            eprintln!("credential state is poisoned; exiting");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn __ls_cli_audit_escape(__ls_value: &str) -> String {
+    let mut __ls_out = String::with_capacity(__ls_value.len());
+    for __ls_character in __ls_value.chars() {
+        match __ls_character {
+            '"' => __ls_out.push_str("\\\""),
+            '\\' => __ls_out.push_str("\\\\"),
+            '\n' => __ls_out.push_str("\\n"),
+            '\r' => __ls_out.push_str("\\r"),
+            '\t' => __ls_out.push_str("\\t"),
+            __ls_character if __ls_character < ' ' => {
+                __ls_out.push_str(&format!("\\u{:04x}", __ls_character as u32));
+            }
+            __ls_character => __ls_out.push(__ls_character),
+        }
+    }
+    __ls_out
+}
+
+struct __LsAudit {
+    tenant: String,
+    sink: Option<std::sync::Mutex<std::fs::File>>,
+}
+
+impl __LsAudit {
+    fn event(
+        &self,
+        __ls_event: &str,
+        __ls_connection: u64,
+        __ls_credential_id: &str,
+        __ls_role: Option<__LsRole>,
+        __ls_detail: &str,
+    ) {
+        let Some(__ls_sink) = self.sink.as_ref() else {
+            return;
+        };
+        let __ls_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|__ls_duration| __ls_duration.as_millis())
+            .unwrap_or(0);
+        let __ls_credential_id: String = __ls_credential_id.chars().take(64).collect();
+        let __ls_line = format!(
+            "{{\"ts_ms\":{},\"event\":\"{}\",\"tenant\":\"{}\",\"connection\":{},\"credential_id\":\"{}\",\"role\":\"{}\",\"detail\":\"{}\"}}\n",
+            __ls_timestamp,
+            __ls_cli_audit_escape(__ls_event),
+            __ls_cli_audit_escape(&self.tenant),
+            __ls_connection,
+            __ls_cli_audit_escape(&__ls_credential_id),
+            __ls_role.map(|__ls_role| __ls_role.as_str()).unwrap_or("-"),
+            __ls_cli_audit_escape(__ls_detail),
+        );
+        match __ls_sink.lock() {
+            Ok(mut __ls_file) => {
+                if let Err(__ls_error) =
+                    __ls_file.write_all(__ls_line.as_bytes()).and_then(|_| __ls_file.flush())
+                {
+                    eprintln!("cannot write audit log: {__ls_error}");
+                }
+            }
+            Err(_) => eprintln!("audit log state is poisoned"),
+        }
+    }
+}
+
+fn __ls_cli_audit(__ls_tenant: &str) -> Result<std::sync::Arc<__LsAudit>, String> {
+    let __ls_path = std::env::var("LIGHTSHADE_AUDIT_LOG")
+        .ok()
+        .filter(|__ls_path| !__ls_path.is_empty());
+    let __ls_sink = match __ls_path {
+        Some(__ls_path) => {
+            if let Ok(__ls_metadata) = std::fs::symlink_metadata(&__ls_path) {
+                if __ls_metadata.file_type().is_symlink() || !__ls_metadata.file_type().is_file() {
+                    return Err(format!("`{__ls_path}` must be a regular file"));
+                }
+            }
+            let mut __ls_options = std::fs::OpenOptions::new();
+            __ls_options.append(true).create(true).read(false);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                __ls_options.mode(0o600);
+            }
+            let __ls_file = __ls_options
+                .open(&__ls_path)
+                .map_err(|__ls_error| format!("cannot open `{__ls_path}`: {__ls_error}"))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                __ls_file
+                    .set_permissions(std::fs::Permissions::from_mode(0o600))
+                    .map_err(|__ls_error| format!("cannot secure `{__ls_path}`: {__ls_error}"))?;
+            }
+            Some(std::sync::Mutex::new(__ls_file))
+        }
+        None => None,
+    };
+    Ok(std::sync::Arc::new(__LsAudit {
+        tenant: __ls_tenant.to_string(),
+        sink: __ls_sink,
+    }))
+}
+
+struct __LsAuditConnection {
+    audit: std::sync::Arc<__LsAudit>,
+    connection: u64,
+    id: String,
+    role: __LsRole,
+}
+
+impl Drop for __LsAuditConnection {
+    fn drop(&mut self) {
+        self.audit.event(
+            "connection_closed",
+            self.connection,
+            &self.id,
+            Some(self.role),
+            "closed",
+        );
+    }
+}
+
+fn __ls_cli_audit_credential_changes(
+    __ls_old: &__LsCredentials,
+    __ls_new: &__LsCredentials,
+    __ls_audit: &__LsAudit,
+) {
+    for __ls_id in __ls_old.entries.keys() {
+        if !__ls_new.entries.contains_key(__ls_id) {
+            __ls_audit.event("credential_removed", 0, __ls_id, None, "credentials_file");
+        }
+    }
+    for (__ls_id, __ls_credential) in &__ls_new.entries {
+        match __ls_old.entries.get(__ls_id) {
+            None => {
+                __ls_audit.event("credential_added", 0, __ls_id, None, "credentials_file");
+            }
+            Some(__ls_previous) => {
+                if !__ls_cli_hash_eq(&__ls_previous.verifier, &__ls_credential.verifier) {
+                    __ls_audit.event("credential_rotated", 0, __ls_id, None, "credentials_file");
+                }
+                if __ls_previous.role != __ls_credential.role {
+                    __ls_audit.event(
+                        "credential_role_changed",
+                        0,
+                        __ls_id,
+                        None,
+                        "credentials_file",
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn __ls_cli_validate_credential_id(__ls_id: &str) -> bool {
+    !__ls_id.is_empty()
+        && __ls_id.len() <= 64
+        && __ls_id.bytes().all(|__ls_byte| {
+            __ls_byte.is_ascii_alphanumeric() || matches!(__ls_byte, b'.' | b'_' | b'-')
+        })
+}
+
+fn __ls_cli_read_credentials(__ls_path: &str) -> Result<__LsCredentials, String> {
+    if __ls_cli_sha256(b"abc")
+        != [
+            0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d,
+            0xae, 0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10,
+            0xff, 0x61, 0xf2, 0x00, 0x15, 0xad,
+        ]
+    {
+        return Err("SHA-256 self-test failed".to_string());
+    }
+    let __ls_metadata = std::fs::symlink_metadata(__ls_path)
+        .map_err(|__ls_error| format!("cannot read `{__ls_path}`: {__ls_error}"))?;
+    if __ls_metadata.file_type().is_symlink() || !__ls_metadata.file_type().is_file() {
+        return Err(format!("`{__ls_path}` must be a regular file"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if __ls_metadata.permissions().mode() & 0o077 != 0 {
+            return Err(format!(
+                "`{__ls_path}` must not be readable by group or others"
+            ));
+        }
+    }
+    let __ls_text = std::fs::read_to_string(__ls_path)
+        .map_err(|__ls_error| format!("cannot read `{__ls_path}`: {__ls_error}"))?;
+    if __ls_text.len() > 1024 * 1024 {
+        return Err(format!("`{__ls_path}` is too large"));
+    }
+    let mut __ls_entries = BTreeMap::new();
+    for (__ls_line_index, __ls_line) in __ls_text.lines().enumerate() {
+        let __ls_line = __ls_line.trim();
+        if __ls_line.is_empty() || __ls_line.starts_with('#') {
+            continue;
+        }
+        let mut __ls_fields = __ls_line.split('\t');
+        let __ls_id = __ls_fields.next().unwrap_or_default();
+        let __ls_role = __ls_fields.next().unwrap_or_default();
+        let __ls_verifier = __ls_fields.next().unwrap_or_default();
+        if __ls_fields.next().is_some() {
+            return Err(format!(
+                "credential line {} has extra fields",
+                __ls_line_index + 1
+            ));
+        }
+        if !__ls_cli_validate_credential_id(__ls_id) {
+            return Err(format!(
+                "credential line {} has an invalid id",
+                __ls_line_index + 1
+            ));
+        }
+        let __ls_role = __LsRole::parse(__ls_role).ok_or_else(|| {
+            format!("credential line {} has an invalid role", __ls_line_index + 1)
+        })?;
+        let __ls_verifier = __ls_cli_parse_hash(__ls_verifier).ok_or_else(|| {
+            format!(
+                "credential line {} has an invalid verifier",
+                __ls_line_index + 1
+            )
+        })?;
+        if __ls_entries
+            .insert(
+                __ls_id.to_string(),
+                __LsCredential {
+                    role: __ls_role,
+                    verifier: __ls_verifier,
+                },
+            )
+            .is_some()
+        {
+            return Err(format!("credential `{__ls_id}` is defined more than once"));
+        }
+    }
+    if __ls_entries.is_empty() {
+        return Err(format!("`{__ls_path}` contains no credentials"));
+    }
+    Ok(__LsCredentials {
+        entries: __ls_entries,
+    })
+}
+
+fn __ls_cli_authorize(__ls_identity: &__LsIdentity, __ls_read: bool) -> Result<(), String> {
+    if __ls_read || __ls_identity.role.allows_write() {
+        Ok(())
+    } else {
+        Err("permission denied".to_string())
+    }
+}
+
+fn __ls_cli_authenticate(
+    __ls_credentials: &__LsCredentials,
+    __ls_id: &str,
+    __ls_secret: &str,
+) -> Option<__LsIdentity> {
+    let __ls_credential = __ls_credentials.entries.get(__ls_id);
+    let __ls_verifier = __ls_credential
+        .map(|__ls_credential| __ls_credential.verifier)
+        .unwrap_or([0u8; 32]);
+    let __ls_actual = __ls_cli_sha256(__ls_secret.as_bytes());
+    let __ls_matches = __ls_cli_hash_eq(&__ls_actual, &__ls_verifier);
+    match (__ls_credential, __ls_matches) {
+        (Some(__ls_credential), true) => Some(__LsIdentity {
+            id: __ls_id.to_string(),
+            role: __ls_credential.role,
+            verifier: __ls_credential.verifier,
+        }),
+        _ => None,
+    }
+}

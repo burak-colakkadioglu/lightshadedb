@@ -1,0 +1,183 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      rows:
+        description: Rows per engine
+        default: "5000"
+        type: string
+      engines:
+        description: Engines to run
+        default: all
+        type: choice
+        options: [all, lightshade, lightshade-client, lightshade-client-x16, redb, sqlite, postgres]
+
+run-name: bench rows=${{ inputs.rows }} engines=${{ inputs.engines }}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      engines: ${{ steps.set.outputs.engines }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ inputs.engines }}" = "all" ]; then
+            echo 'engines=["lightshade", "lightshade-client", "lightshade-client-x16", "redb", "sqlite", "postgres"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'engines=["${{ inputs.engines }}"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  bench:
+    name: bench (${{ matrix.os }}, ${{ matrix.engine }})
+    needs: setup
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        engine: ${{ fromJSON(needs.setup.outputs.engines) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache PostgreSQL binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.theseus/postgresql
+          key: pgbin-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: pgbin-${{ matrix.os }}-
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+      - name: Build benchmark
+        run: cargo build --release -p ls-bench
+      - name: Run benchmark
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BIN=target/release/ls-bench
+          OUT="results-${{ matrix.os }}-${{ matrix.engine }}.json"
+          "$BIN" --engine "${{ matrix.engine }}" --rows "${{ inputs.rows }}" --out "$OUT"
+          mkdir -p results
+          mv "$OUT" results/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.os }}-${{ matrix.engine }}
+          path: results/
+          retention-days: 90
+
+  report:
+    name: report
+    needs: bench
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          merge-multiple: true
+          path: results
+      - name: Versions
+        id: versions
+        run: |
+          echo "rustc=$(rustc -V)" >> "$GITHUB_OUTPUT"
+          echo "lightshade=$(grep '^version' Cargo.toml | head -1 | awk -F'\"' '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "redb=$(cargo tree -p redb --depth 0 --prefix none 2>/dev/null | head -1 | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "rusqlite=$(cargo tree -p rusqlite --depth 0 --prefix none 2>/dev/null | head -1 | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "sysinfo=$(cargo tree -p sysinfo --depth 0 --prefix none 2>/dev/null | head -1 | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - name: Render report
+        run: |
+          python3 - "$GITHUB_STEP_SUMMARY" <<'PYEOF'
+          import glob, json, os, sys
+          from datetime import datetime, timezone
+          out = sys.argv[1]
+          rows = sorted(
+              (json.load(open(f)) for f in glob.glob("results/*.json")),
+              key=lambda d: (d["os"], d["engine"]),
+          )
+          engines = ["lightshade", "lightshade-client", "lightshade-client-x16", "redb", "sqlite", "postgres"]
+          present = sorted({d["engine"] for d in rows if d["engine"] in engines},
+                           key=engines.index)
+          workloads = ["insert", "get", "scan", "count", "batch"]
+          notes = {
+              "lightshade": "defaults (8 MiB checkpoints, 1 ms group commit); planner index on (inbox_id, is_read, sent_at)",
+              "lightshade-client": "same engine over TCP localhost (sequential; RTT-bound)",
+          "lightshade-client-x16": "16 sharded blocking clients over TCP localhost (server parallelizes reads under RwLock, applies writes serially, group-commits WAL fsyncs across connections; measures connection scaling)",
+              "redb": "one write txn per insert; no secondary index (full scan + sort in harness)",
+              "sqlite": "autocommit per op, stock journal mode/synchronous; index on (inbox_id, is_read, sent_at DESC)",
+              "postgres": "autocommit per op over TCP localhost; stock settings; index on (inbox_id, is_read, sent_at DESC)",
+          }
+          versions = {
+              "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+              "rustc": os.environ.get("RUSTC_V", ""),
+              "lightshade": os.environ.get("LS_V", ""),
+              "redb": os.environ.get("REDB_V", ""),
+              "rusqlite": os.environ.get("SQLITE_V", ""),
+              "sysinfo": os.environ.get("SYSINFO_V", ""),
+              "rows": str(rows[0]["rows"]) if rows else "?",
+          }
+          L = []
+          L.append("# Benchmarks")
+          L.append("")
+          L.append("| key | value |")
+          L.append("|---|---|")
+          for k in ["date", "rustc", "lightshade", "redb", "rusqlite", "sysinfo", "rows"]:
+              L.append(f"| {k} | {versions[k]} |")
+          L.append("| batch | 100 rows per op |")
+          for e in present:
+              L.append(f"| {e} | {notes.get(e, '')} |")
+          for os_name in ["linux", "windows", "macos"]:
+              group = [d for d in rows if d["os"] == os_name]
+              if not group:
+                  continue
+              by_engine = {d["engine"]: d for d in group}
+              present_os = [e for e in present if e in by_engine]
+              if not present_os:
+                  continue
+              cpu = next((d["cpu"] for d in group if d.get("cpu")), "")
+              L.append("")
+              L.append(f"## {os_name} ({cpu}, {group[0]['cpus']} cpus, {group[0]['mem_mb']} MiB RAM)")
+              L.append("")
+              L.append("| workload | " + " | ".join(present_os) + " |")
+              L.append("|---|" + "---|" * len(present_os))
+              for w in workloads:
+                  cells = []
+                  for e in present_os:
+                      p = by_engine[e]["phases"][w]
+                      cells.append(f"{p['ops_s']:,.0f} ops/s")
+                  L.append(f"| {w} | " + " | ".join(cells) + " |")
+              L.append("")
+              L.append("| workload | " + " | ".join(present_os) + " |")
+              L.append("|---|" + "---|" * len(present_os))
+              for w in workloads:
+                  cells = []
+                  for e in present_os:
+                      p = by_engine[e]["phases"][w]
+                      cells.append(f"{p['p50_us']:,.1f} / {p['p99_us']:,.1f} us")
+                  L.append(f"| {w} p50 / p99 | " + " | ".join(cells) + " |")
+              L.append("")
+              L.append("| engine | peak RSS (MiB) | peak cpu % |")
+              L.append("|---|---|---|")
+              for e in present_os:
+                  d = by_engine[e]
+                  L.append(f"| {e} | {d['peak_rss_mb']:.1f} | {d['cpu_pct']:.1f} |")
+          report = "\n".join(L) + "\n"
+          open("report.md", "w").write(report)
+          open(out, "a").write(report + "\n")
+          print(report)
+          PYEOF
+        env:
+          RUSTC_V: ${{ steps.versions.outputs.rustc }}
+          LS_V: ${{ steps.versions.outputs.lightshade }}
+          REDB_V: ${{ steps.versions.outputs.redb }}
+          SQLITE_V: ${{ steps.versions.outputs.rusqlite }}
+          SYSINFO_V: ${{ steps.versions.outputs.sysinfo }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: |
+            report.md
+            results/
+          retention-days: 90

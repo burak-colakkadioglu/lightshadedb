@@ -1,0 +1,33 @@
+# Benchmark workload: a single primary-key table with no secondary indexes.
+#
+# Point lookups, ordered primary-key scans, and point updates exercise the
+# shape redb is designed for: one ordered key-value tree and no maintained
+# counters or secondary indexes.
+
+table kv {
+    id: i64 primary_key
+    value: text
+}
+
+operation put_kv(id: i64, value: text) {
+    insert kv
+}
+
+operation get_kv(wanted: i64) -> many kv {
+    filter id == wanted
+    limit 1
+}
+
+operation scan_kv(start: i64, limit: i64) -> many kv {
+    filter id >= start
+    order by id asc
+    limit limit
+}
+
+operation update_kv(wanted: i64, wanted_value: text) {
+    update kv set value = wanted_value where id == wanted
+}
+
+operation kv_count() -> one i64 {
+    count kv where id >= 0
+}

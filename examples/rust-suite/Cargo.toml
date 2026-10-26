@@ -1,0 +1,18 @@
+[package]
+name = "rust-suite"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lightshade = { workspace = true }
+
+[features]
+default = ["embedded"]
+embedded = ["lightshade/embedded"]
+host = ["embedded", "lightshade/host"]
+client = ["lightshade/client"]
+async = ["lightshade/async"]
+
+[dev-dependencies]
+lightshade-codegen = { workspace = true }

@@ -1,0 +1,29 @@
+# Registry fixture: two embedded databases, one hosted database, and one
+# client connection, all sharing the `store` schema. Paths are overridden
+# per test through `LIGHTSHADE_<ID>_PATH` and friends; only the host port
+# is fixed so the client entry can name it.
+[database.a1]
+schema = "rust_messages::store"
+mode = "embedded"
+path = "data/a1.lsdb"
+
+[database.a2]
+schema = "rust_messages::store"
+mode = "embedded"
+path = "data/a2.lsdb"
+
+[database.b1]
+schema = "rust_messages::store"
+mode = "host"
+path = "data/b1.lsdb"
+listen = "tcp://127.0.0.1:17931"
+access = "local"
+credentials_file = "data/b1.creds"
+
+[database.c1]
+schema = "rust_messages::store"
+mode = "client"
+endpoint = "tcp://127.0.0.1:17931/b1"
+
+[database.c1.credentials]
+id = "tester"

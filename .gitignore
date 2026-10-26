@@ -1,0 +1,16 @@
+# build
+/target/
+**/target/
+# editor
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+# local databases and scratch
+*.lsdb*
+*.dump
+*.csv
+# example app runtime data
+examples/apps/.data/
+docs/book/

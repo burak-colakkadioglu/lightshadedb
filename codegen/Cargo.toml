@@ -1,0 +1,11 @@
+[package]
+name = "lightshade-codegen"
+version.workspace = true
+edition.workspace = true
+description = "Lightshade IR, validation, and specialized code generation."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+toml = { workspace = true }
