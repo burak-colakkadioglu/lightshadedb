@@ -47,7 +47,7 @@ units, so read the unit column, not your instincts.
 |---|---|---|
 | `LIGHTSHADE_MODE` | `embedded` (or `client`) | `App::from_env` mode; embedded default applies when that feature is on |
 | `LIGHTSHADE_PATH` | required in embedded mode | database path for `from_env` |
-| `LIGHTSHADE_ENDPOINT` | required in client mode | endpoint for `from_env` |
+| `LIGHTSHADE_ENDPOINT` | required in client mode | endpoint (`tcp://`, `unix://`, bare path) or `lightshadedb://` connection URL for `from_env` |
 | `LIGHTSHADE_MIGRATION_BACKUP` | true | back up before `--apply` |
 | `LIGHTSHADE_ALLOW_DESTRUCTIVE_MIGRATION` | false | allow destructive steps |
 | `LIGHTSHADE_<ID>_PATH` et al. | — | per-registry-entry overrides ([Registry](registry.md)) |

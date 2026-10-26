@@ -30,7 +30,7 @@ pub use migration::{
     FieldSummary, MigrationOptions, MigrationPlan, MigrationReport, MigrationStep, SchemaSummary,
     TableSummary,
 };
-pub use net::{ClientEndpoint, Listen, NetworkAccess, DEFAULT_DATABASE};
+pub use net::{ClientEndpoint, ConnectionSpec, Listen, NetworkAccess, DEFAULT_DATABASE};
 pub use options::{OpenOptions, RecoverOptions};
 pub use query::{
     avg, count, max, min, sum, Aggregate, Assignment, Field, Group, Join, Order, Predicate,

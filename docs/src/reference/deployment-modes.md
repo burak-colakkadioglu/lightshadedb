@@ -89,3 +89,38 @@ predecessors unlinked at bind. `ClientEndpoint::parse` takes
 `tcp://HOST:PORT[/DATABASE]`, `unix:///path`, or a bare path;
 `tcp` / `tcp_db` constructors and `database()` / `as_path()`
 accessors round it out, with `"default"` as the unnamed database.
+
+## Connection URLs
+
+One string holds the endpoint, login, and timeouts, like an ordinary
+database URL:
+
+```text
+lightshadedb://tester:correct%20horse%20battery%20staple@db.internal:9000/orders
+lightshadedb://tester:correct%20horse%20battery%20staple@/run/lightshade.sock
+```
+
+`Client::connect_url(&url, options)` (and `AsyncClient::connect_url`)
+dials the endpoint inside the URL. Credentials in the URL override the
+ones in `ClientOptions`. If the URL has no credentials, the ones in
+`ClientOptions` are used. `connect_timeout` / `io_timeout` query parameters
+take whole seconds and override the matching option fields:
+
+```text
+lightshadedb://tester:s3cret@db.internal:9000/orders?connect_timeout=3&io_timeout=30
+```
+
+Characters outside `A-Za-z0-9.-_~` in the id, secret, socket path, or
+database name must be `%XX`-encoded (`%20` for the space above).
+`LIGHTSHADE_ENDPOINT` also accepts this form in `App::from_env` —
+handy as a single config value:
+
+```console
+LIGHTSHADE_ENDPOINT=lightshadedb://tester:s3cret@db.internal:9000/orders
+LIGHTSHADE_MODE=client
+```
+
+Two names are rejected on purpose: `sslmode` (Lightshade DB speaks its own protocol,
+not PostgreSQL wire — terminate TLS in front of the server) and
+`timezone` (there are no time-zone-aware field types; store instants
+as UTC).

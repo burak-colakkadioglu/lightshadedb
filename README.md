@@ -15,7 +15,7 @@ Maintained by [Lightshade](https://github.com/burak-colakkadioglu).
   at runtime.
 - You want to start with a local file and maybe grow into hosted,
   multi-client access later — without rewriting application logic.
-- Durability should be boring: crash-safe writes, checksummed storage,
+- Durable by default: crash-safe writes, checksummed storage,
   explicit quotas.
 
 If you need ad-hoc or user-supplied queries, a SQL-speaking database
@@ -32,15 +32,15 @@ $ cargo run
 1 open note(s)
 ```
 
-## A first taste
+## Example
 
 ```rust
-#[lightshade::schema]
+#[lightshadedb::schema]
 pub mod store {
-    use lightshade::prelude::*;
+    use lightshadedb::prelude::*;
 
     pub struct Message {
-        #[lightshade(primary_key)]
+        #[lightshadedb(primary_key)]
         pub id: i64,
         pub inbox_id: i64,
         pub sent_at: i64,
@@ -48,9 +48,9 @@ pub mod store {
         pub body: String,
     }
 
-    #[lightshade::operations]
+    #[lightshadedb::operations]
     pub trait Messages {
-        #[lightshade::query(
+        #[lightshadedb::query(
             filter = Message::inbox_id.eq(inbox) & Message::is_read.eq(false),
             order = (Message::sent_at.desc(), Message::id.desc()),
             limit = limit,
@@ -76,7 +76,7 @@ let unread = db.recent_unread(2, 10)?;
 | `async`    | Pooled async client                                     |
 
 Code written against the `Backend` trait compiles and runs in all of
-them — deployment stays a `Cargo.toml` edit instead of a rewrite.
+them. Deployment is a `Cargo.toml` edit, not a rewrite.
 
 ## Learn more
 
@@ -107,7 +107,7 @@ The tree stays green: `cargo fmt --check`, `cargo clippy --workspace
 ever — explain it in the book instead.
 
 See [CONTRIBUTING](CONTRIBUTING) (including the relicensing grant) and
-the [Code of Conduct](CODE_OF_CONDUCT.md). Please use the issue
+the [Code of Conduct](CODE_OF_CONDUCT.md). Use the issue
 templates for bug reports and feature requests, and the pull request
 template for changes.
 

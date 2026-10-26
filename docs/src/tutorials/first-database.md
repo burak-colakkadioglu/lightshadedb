@@ -3,11 +3,6 @@
 You'll go from an empty directory to a working embedded database with
 a declared query. You need a Rust toolchain and about ten minutes.
 
-> **Crate name.** On release, Lightshade DB ships on crates.io as
-> `lightshadedb`. The code below uses the release dependency; Rust
-> import paths (`lightshadedb::…`, `#[lightshadedb::…]`) still show the
-> pre-release namespace and track the rename when it lands.
-
 ## 1. Scaffold
 
 Install the CLI and generate a starter project:
@@ -101,7 +96,7 @@ pub trait Messages {
 }
 ```
 
-Two guardrails worth internalizing: `update` *requires* a `set`
+Two rules to know: `update` *requires* a `set`
 clause, so you can't accidentally rewrite a table, and `count`
 queries reject everything except a filter — no ordering, no paging, no
 joins on a count. The full rulebook is [Schema macro](../reference/schema-macro.md).

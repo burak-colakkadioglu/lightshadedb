@@ -1,8 +1,10 @@
 use crate::error::{Error, Result};
+use crate::secret::ClientCredentials;
 use std::fmt;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -460,6 +462,209 @@ impl Listen {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ConnectionSpec {
+    pub endpoint: ClientEndpoint,
+    pub credentials: Option<ClientCredentials>,
+    pub connect_timeout: Option<Duration>,
+    pub io_timeout: Option<Duration>,
+}
+
+impl ConnectionSpec {
+    pub fn parse(url: &str) -> Result<Self> {
+        let rest = url.strip_prefix("lightshadedb://").ok_or_else(|| {
+            Error::InvalidArgument {
+                name: "url".to_string(),
+                reason: "must look like lightshadedb://[id:secret@]host:port[/dbname][?params] or lightshadedb://[id:secret@]/socket/path".to_string(),
+            }
+        })?;
+        if rest.contains('#') {
+            return Err(Error::InvalidArgument {
+                name: "url".to_string(),
+                reason: "fragments (`#...`) are not supported".to_string(),
+            });
+        }
+        let (head, query) = match rest.split_once('?') {
+            Some((head, query)) => (head, Some(query)),
+            None => (rest, None),
+        };
+        let (userinfo, hostpart) = match head.rsplit_once('@') {
+            Some((userinfo, hostpart)) => (Some(userinfo), hostpart),
+            None => (None, head),
+        };
+        let credentials = match userinfo {
+            Some(userinfo) => Some(parse_userinfo(userinfo)?),
+            None => None,
+        };
+        let endpoint = if hostpart.starts_with('/') {
+            if hostpart.len() < 2 {
+                return Err(Error::InvalidArgument {
+                    name: "url".to_string(),
+                    reason: "unix socket path is empty".to_string(),
+                });
+            }
+            ClientEndpoint::path(decode_pct(hostpart, "socket path")?)
+        } else {
+            let (authority, database) = match hostpart.split_once('/') {
+                Some((authority, database)) => {
+                    if database.is_empty() {
+                        return Err(Error::InvalidArgument {
+                            name: "url".to_string(),
+                            reason: "database name is empty".to_string(),
+                        });
+                    }
+                    (authority, decode_pct(database, "database name")?)
+                }
+                None => (hostpart, DEFAULT_DATABASE.to_string()),
+            };
+            let (host, port) = split_host_port(authority)?;
+            ClientEndpoint::tcp_db(host, port, database)
+        };
+        let mut spec = Self {
+            endpoint,
+            credentials,
+            connect_timeout: None,
+            io_timeout: None,
+        };
+        if let Some(query) = query {
+            parse_query(query, &mut spec)?;
+        }
+        Ok(spec)
+    }
+
+    pub fn apply_to(
+        &self,
+        credentials: &mut ClientCredentials,
+        connect_timeout: &mut Duration,
+        io_timeout: &mut Duration,
+    ) {
+        if let Some(spec_credentials) = &self.credentials {
+            *credentials = spec_credentials.clone();
+        }
+        if let Some(timeout) = self.connect_timeout {
+            *connect_timeout = timeout;
+        }
+        if let Some(timeout) = self.io_timeout {
+            *io_timeout = timeout;
+        }
+    }
+}
+
+fn parse_userinfo(userinfo: &str) -> Result<ClientCredentials> {
+    let (id, secret) = userinfo
+        .split_once(':')
+        .ok_or_else(|| Error::InvalidArgument {
+            name: "url".to_string(),
+            reason: "userinfo must look like id:secret".to_string(),
+        })?;
+    let id = decode_pct(id, "credential id")?;
+    if id.is_empty()
+        || id.len() > 64
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err(Error::InvalidArgument {
+            name: "url".to_string(),
+            reason: "credential id must be 1-64 ASCII letters, digits, `.`, `_`, or `-`"
+                .to_string(),
+        });
+    }
+    let secret = decode_pct(secret, "credential secret")?;
+    if secret.is_empty() {
+        return Err(Error::InvalidArgument {
+            name: "url".to_string(),
+            reason: "credential secret is empty".to_string(),
+        });
+    }
+    Ok(ClientCredentials::new(id, secret))
+}
+
+fn decode_pct(value: &str, what: &str) -> Result<String> {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return Err(Error::InvalidArgument {
+                    name: "url".to_string(),
+                    reason: format!("{what} has a truncated `%` escape"),
+                });
+            }
+            let high = hex_value(bytes[index + 1], what)?;
+            let low = hex_value(bytes[index + 2], what)?;
+            out.push(high << 4 | low);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(out).map_err(|_| Error::InvalidArgument {
+        name: "url".to_string(),
+        reason: format!("{what} is not valid UTF-8"),
+    })
+}
+
+fn hex_value(byte: u8, what: &str) -> Result<u8> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        b'A'..=b'F' => Ok(byte - b'A' + 10),
+        _ => Err(Error::InvalidArgument {
+            name: "url".to_string(),
+            reason: format!("{what} has an invalid `%` escape"),
+        }),
+    }
+}
+
+fn parse_query(query: &str, spec: &mut ConnectionSpec) -> Result<()> {
+    for pair in query.split('&') {
+        let (key, value) = pair.split_once('=').ok_or_else(|| Error::InvalidArgument {
+            name: "url".to_string(),
+            reason: format!("query parameter `{pair}` must look like `name=value`"),
+        })?;
+        match key {
+            "connect_timeout" => {
+                spec.connect_timeout = Some(parse_timeout(key, value)?);
+            }
+            "io_timeout" => {
+                spec.io_timeout = Some(parse_timeout(key, value)?);
+            }
+            "sslmode" => {
+                return Err(Error::InvalidArgument {
+                    name: "url".to_string(),
+                    reason: "sslmode is not supported: Lightshade DB speaks its own protocol, not PostgreSQL wire; terminate TLS in front of the server".to_string(),
+                });
+            }
+            "timezone" => {
+                return Err(Error::InvalidArgument {
+                    name: "url".to_string(),
+                    reason: "timezone is not supported: Lightshade DB has no time-zone-aware field types; store instants as UTC".to_string(),
+                });
+            }
+            _ => {
+                return Err(Error::InvalidArgument {
+                    name: "url".to_string(),
+                    reason: format!("unknown query parameter `{key}`"),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn parse_timeout(key: &str, value: &str) -> Result<Duration> {
+    value
+        .parse::<u64>()
+        .map(Duration::from_secs)
+        .map_err(|_| Error::InvalidArgument {
+            name: "url".to_string(),
+            reason: format!("query parameter `{key}` must be a whole number of seconds"),
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -680,5 +885,151 @@ mod tests {
             NetworkAccess::External
         );
         assert!("publicly".parse::<NetworkAccess>().is_err());
+    }
+
+    #[test]
+    fn connection_urls_parse() {
+        let spec =
+            ConnectionSpec::parse("lightshadedb://bench:s3cret@db.internal:9000/orders").unwrap();
+        assert_eq!(
+            spec.endpoint,
+            ClientEndpoint::tcp_db("db.internal", 9000, "orders")
+        );
+        let credentials = spec.credentials.unwrap();
+        assert_eq!(credentials.id, "bench");
+        assert_eq!(credentials.secret.expose(), "s3cret");
+        assert!(spec.connect_timeout.is_none());
+
+        let spec = ConnectionSpec::parse("lightshadedb://db.internal:9000").unwrap();
+        assert_eq!(spec.endpoint, ClientEndpoint::tcp("db.internal", 9000));
+        assert!(spec.credentials.is_none());
+
+        let spec = ConnectionSpec::parse("lightshadedb://[::1]:9000/orders").unwrap();
+        assert_eq!(spec.endpoint, ClientEndpoint::tcp_db("::1", 9000, "orders"));
+
+        let spec = ConnectionSpec::parse("lightshadedb:///run/lightshade.sock").unwrap();
+        assert_eq!(spec.endpoint, ClientEndpoint::path("/run/lightshade.sock"));
+
+        let spec =
+            ConnectionSpec::parse("lightshadedb://bench:p%40ss%2Fword@db.internal:9000").unwrap();
+        assert_eq!(spec.credentials.unwrap().secret.expose(), "p@ss/word");
+
+        let spec = ConnectionSpec::parse(
+            "lightshadedb://bench:s3cret@db.internal:9000/orders?connect_timeout=3&io_timeout=30",
+        )
+        .unwrap();
+        assert_eq!(
+            spec.connect_timeout,
+            Some(std::time::Duration::from_secs(3))
+        );
+        assert_eq!(spec.io_timeout, Some(std::time::Duration::from_secs(30)));
+
+        assert!(ConnectionSpec::parse("postgres://bench:s3cret@db:9000/orders").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://db.internal").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://db.internal:9000/").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://:9000/orders").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://bench@db.internal:9000").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://bench:@db.internal:9000").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://:s3cret@db.internal:9000").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://bench:xx@db.internal:9000#frag").is_err());
+        assert!(ConnectionSpec::parse(
+            "lightshadedb://bench:s3cret@db.internal:9000/orders?sslmode=require"
+        )
+        .is_err());
+        assert!(ConnectionSpec::parse(
+            "lightshadedb://bench:s3cret@db.internal:9000/orders?timezone=UTC"
+        )
+        .is_err());
+        assert!(ConnectionSpec::parse(
+            "lightshadedb://bench:s3cret@db.internal:9000/orders?bogus=1"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn connection_url_edge_cases() {
+        assert!(ConnectionSpec::parse("lightshadedb://").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb:///").is_err());
+        assert!(ConnectionSpec::parse("tcp://db.internal:9000/orders").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://db.internal").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://db.internal:notaport").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://[::1]/orders").is_err());
+
+        let spec = ConnectionSpec::parse("lightshadedb://u%41ser:s3cret@db.internal:9000").unwrap();
+        assert_eq!(spec.credentials.unwrap().id, "uAser");
+        assert!(ConnectionSpec::parse("lightshadedb://%ZZ:sec@db.internal:9000").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://id:se%2@db.internal:9000").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://id:sec%@db.internal:9000").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://%FF:sec@db.internal:9000").is_err());
+        assert!(ConnectionSpec::parse(&format!(
+            "lightshadedb://{}:sec@db.internal:9000",
+            "a".repeat(65)
+        ))
+        .is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://a%20b:sec@db.internal:9000").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://a/b:sec@db.internal:9000").is_err());
+
+        let spec = ConnectionSpec::parse("lightshadedb://id:sec@/run/x.sock").unwrap();
+        assert_eq!(spec.endpoint, ClientEndpoint::path("/run/x.sock"));
+        assert_eq!(spec.credentials.unwrap().id, "id");
+
+        let spec = ConnectionSpec::parse("lightshadedb://db.internal:9000/my%20db").unwrap();
+        assert_eq!(spec.endpoint.database(), "my db");
+
+        assert!(ConnectionSpec::parse("lightshadedb://db.internal:9000?").is_err());
+        assert!(ConnectionSpec::parse("lightshadedb://db.internal:9000?flag").is_err());
+        assert!(
+            ConnectionSpec::parse("lightshadedb://db.internal:9000?connect_timeout=x").is_err()
+        );
+        let spec =
+            ConnectionSpec::parse("lightshadedb://db.internal:9000?connect_timeout=0").unwrap();
+        assert_eq!(
+            spec.connect_timeout,
+            Some(std::time::Duration::from_secs(0))
+        );
+        let spec =
+            ConnectionSpec::parse("lightshadedb://db.internal:9000?io_timeout=5&io_timeout=9")
+                .unwrap();
+        assert_eq!(spec.io_timeout, Some(std::time::Duration::from_secs(9)));
+        let error = ConnectionSpec::parse(
+            "lightshadedb://bench:s3cret@db.internal:9000/orders?sslmode=disable",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("sslmode"));
+        let error = ConnectionSpec::parse(
+            "lightshadedb://bench:s3cret@db.internal:9000/orders?timezone=UTC",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("timezone"));
+    }
+
+    #[test]
+    fn connection_spec_overrides_options() {
+        let base_credentials = crate::secret::ClientCredentials::new("env", "env-secret");
+        let spec = ConnectionSpec::parse("lightshadedb://db.internal:9000").unwrap();
+        let mut credentials = base_credentials.clone();
+        let mut connect_timeout = std::time::Duration::from_secs(5);
+        let mut io_timeout = std::time::Duration::from_secs(30);
+        spec.apply_to(&mut credentials, &mut connect_timeout, &mut io_timeout);
+        assert_eq!(credentials.id, "env");
+        assert_eq!(connect_timeout, std::time::Duration::from_secs(5));
+
+        let spec =
+            ConnectionSpec::parse("lightshadedb://url:id@db.internal:9000?io_timeout=7").unwrap();
+        let mut credentials = base_credentials;
+        let mut connect_timeout = std::time::Duration::from_secs(5);
+        let mut io_timeout = std::time::Duration::from_secs(30);
+        spec.apply_to(&mut credentials, &mut connect_timeout, &mut io_timeout);
+        assert_eq!(credentials.id, "url");
+        assert_eq!(connect_timeout, std::time::Duration::from_secs(5));
+        assert_eq!(io_timeout, std::time::Duration::from_secs(7));
+    }
+
+    #[test]
+    fn connection_spec_debug_redacts_secrets() {
+        let spec = ConnectionSpec::parse("lightshadedb://bench:hunter2@db.internal:9000").unwrap();
+        let text = format!("{spec:?}");
+        assert!(!text.contains("hunter2"));
+        assert!(text.contains("bench"));
     }
 }

@@ -100,6 +100,25 @@ async fn pool_shares_one_client_across_tasks() {
     server.join().unwrap();
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn async_client_connects_by_url() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("messages.lsdb");
+    let mut db = Db::open(&path).unwrap();
+    seed(&mut db);
+    let server = start_tcp(db);
+    let addr = server.local_addr().expect("bound TCP address");
+    let url = format!(
+        "lightshadedb://tester:correct%20horse%20battery%20staple@{}:{}",
+        addr.ip(),
+        addr.port()
+    );
+    let wrong = PoolOptions::new(lightshadedb::ClientCredentials::new("tester", "wrong"));
+    let client = store::AsyncClient::connect_url(&url, wrong).await.unwrap();
+    assert_eq!(client.unread_count(7).await.unwrap(), 2);
+    server.join().unwrap();
+}
+
 fn scripted_peer(
     script: Vec<lightshadedb::Error>,
     finally: Option<Vec<lightshadedb::table::Value>>,

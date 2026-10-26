@@ -136,8 +136,13 @@ pub(crate) fn app_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStre
                                 reason: "is not set".to_string(),
                             }
                         })?;
-                        let endpoint = ::lightshadedb::ClientEndpoint::parse(&endpoint)?;
-                        let options = ::lightshadedb::ClientOptions::from_env()?;
+                        let (endpoint, options) = if endpoint.starts_with("lightshadedb://") {
+                            let spec = ::lightshadedb::ConnectionSpec::parse(&endpoint)?;
+                            ::lightshadedb::ClientOptions::from_spec_or_env(&spec)?
+                        } else {
+                            let endpoint = ::lightshadedb::ClientEndpoint::parse(&endpoint)?;
+                            (endpoint, ::lightshadedb::ClientOptions::from_env()?)
+                        };
                         ::std::result::Result::Ok(App::Client(Client::connect_endpoint(
                             endpoint, options,
                         )?))

@@ -518,6 +518,20 @@ pub(crate) fn client_wrapper(
                 })
             }
 
+            pub fn connect_url(
+                url: &str,
+                options: ::lightshadedb::ClientOptions,
+            ) -> ::lightshadedb::Result<Self> {
+                let spec = ::lightshadedb::ConnectionSpec::parse(url)?;
+                let mut options = options;
+                spec.apply_to(
+                    &mut options.credentials,
+                    &mut options.connect_timeout,
+                    &mut options.io_timeout,
+                );
+                Self::connect_endpoint(spec.endpoint, options)
+            }
+
             pub fn connect_tcp(
                 addr: impl ::std::net::ToSocketAddrs,
                 options: ::lightshadedb::ClientOptions,
@@ -844,6 +858,20 @@ pub(crate) fn async_client_wrapper(
             ) -> ::lightshadedb::Result<Self> {
                 let pool = ::lightshadedb::pool::Pool::new(endpoint, #fingerprint, options).await?;
                 ::std::result::Result::Ok(Self { pool })
+            }
+
+            pub async fn connect_url(
+                url: &str,
+                options: #pool_options,
+            ) -> ::lightshadedb::Result<Self> {
+                let spec = ::lightshadedb::ConnectionSpec::parse(url)?;
+                let mut options = options;
+                spec.apply_to(
+                    &mut options.credentials,
+                    &mut options.connect_timeout,
+                    &mut options.io_timeout,
+                );
+                Self::connect_endpoint(spec.endpoint, options).await
             }
 
             pub async fn connect_tcp(

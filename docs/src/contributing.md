@@ -25,8 +25,8 @@ database lives there.
 
 | Suite | What it pins |
 |---|---|
-| `lightshade` lib + `cli` + `dataplane_compat` | facade behavior, exit codes, CLI↔API byte identity |
-| `lightshade-codegen` lib (73 tests) | planner, emitters, persistence, recovery, servers |
+| `lightshadedb` lib + `cli` + `dataplane_compat` | facade behavior, exit codes, CLI↔API byte identity |
+| `lightshadedb-codegen` lib (73 tests) | planner, emitters, persistence, recovery, servers |
 | `compile_fail` (trybuild, 15 cases) | the important schema diagnostic messages |
 | `rust-messages` (embedded/network/nullable/pool/…) | per-mode behavior over the fixture |
 | `rust-suite` equivalence | host+client agrees with embedded |

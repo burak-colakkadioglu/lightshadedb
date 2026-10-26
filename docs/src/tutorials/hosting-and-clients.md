@@ -17,7 +17,7 @@ let listen = lightshadedb::Listen::tcp_local(7171);
 `tcp_local_network` and `tcp_external` take a full `SocketAddr` and
 pair it with the matching policy — including wildcard binds, which
 are allowed under `LocalNetwork` and refused under `Local`. For
-anything escort-worthy, parse and constrain:
+anything internet-facing, parse and constrain:
 
 ```rust
 let listen = lightshadedb::Listen::parse_tcp("tcp://0.0.0.0:7171", lightshadedb::NetworkAccess::External)?

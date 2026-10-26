@@ -144,6 +144,38 @@ fn tcp_round_trip() {
 }
 
 #[test]
+fn connection_url_round_trip() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("messages.lsdb");
+    let mut db = Db::open(&path).unwrap();
+    seed(&mut db);
+    let mut options = ServeOptions::new(CredentialsSource::Static(credentials()));
+    options.listen = Listen::tcp_local(0);
+    let server = store::Server::start(db, options).unwrap();
+    let addr = server.local_addr().expect("bound TCP address");
+    let url = |secret: &str| {
+        format!(
+            "lightshadedb://tester:{}@{}:{}",
+            secret,
+            addr.ip(),
+            addr.port()
+        )
+    };
+    let wrong_options = ClientOptions::new(lightshadedb::ClientCredentials::new("tester", "wrong"));
+    let error = match store::Client::connect_url(&url("nope"), wrong_options.clone()) {
+        Ok(_) => panic!("bad URL credentials were accepted"),
+        Err(error) => error,
+    };
+    assert_eq!(error.kind(), ErrorKind::Auth);
+    let mut client =
+        store::Client::connect_url(&url("correct%20horse%20battery%20staple"), wrong_options)
+            .unwrap();
+    exercise(&mut client);
+    client.close().unwrap();
+    server.join().unwrap();
+}
+
+#[test]
 fn reading_role_cannot_write() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("messages.lsdb");
@@ -169,6 +201,81 @@ fn reading_role_cannot_write() {
     let error = client.mark_read(1).unwrap_err();
     assert_eq!(error.kind(), ErrorKind::Auth);
     assert!(client.count::<Message>().is_ok());
+    server.join().unwrap();
+}
+
+struct EnvGuard {
+    saved: Vec<(&'static str, Option<String>)>,
+}
+
+impl EnvGuard {
+    fn take(keys: &[&'static str]) -> Self {
+        Self {
+            saved: keys
+                .iter()
+                .map(|key| (*key, std::env::var(key).ok()))
+                .collect(),
+        }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (key, value) in self.saved.drain(..) {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+    }
+}
+
+#[test]
+fn app_from_env_accepts_connection_urls() {
+    let _guard = EnvGuard::take(&[
+        "LIGHTSHADE_MODE",
+        "LIGHTSHADE_ENDPOINT",
+        "LIGHTSHADE_CREDENTIAL_ID",
+        "LIGHTSHADE_CREDENTIAL_SECRET",
+    ]);
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("messages.lsdb");
+    let mut db = Db::open(&path).unwrap();
+    seed(&mut db);
+    let mut options = ServeOptions::new(CredentialsSource::Static(credentials()));
+    options.listen = Listen::tcp_local(0);
+    let server = store::Server::start(db, options).unwrap();
+    let addr = server.local_addr().expect("bound TCP address");
+
+    std::env::set_var("LIGHTSHADE_MODE", "client");
+    std::env::remove_var("LIGHTSHADE_CREDENTIAL_ID");
+    std::env::remove_var("LIGHTSHADE_CREDENTIAL_SECRET");
+    std::env::set_var(
+        "LIGHTSHADE_ENDPOINT",
+        format!(
+            "lightshadedb://tester:correct%20horse%20battery%20staple@{}:{}",
+            addr.ip(),
+            addr.port()
+        ),
+    );
+    let app = store::App::from_env().unwrap();
+    assert_eq!(app.unread_count(7).unwrap(), 2);
+
+    std::env::set_var(
+        "LIGHTSHADE_ENDPOINT",
+        format!("tcp://{}:{}", addr.ip(), addr.port()),
+    );
+    std::env::set_var("LIGHTSHADE_CREDENTIAL_ID", "tester");
+    std::env::set_var(
+        "LIGHTSHADE_CREDENTIAL_SECRET",
+        "correct horse battery staple",
+    );
+    let app = store::App::from_env().unwrap();
+    assert_eq!(app.unread_count(7).unwrap(), 2);
+
+    std::env::remove_var("LIGHTSHADE_CREDENTIAL_ID");
+    std::env::remove_var("LIGHTSHADE_CREDENTIAL_SECRET");
+    assert!(store::App::from_env().is_err());
     server.join().unwrap();
 }
 
