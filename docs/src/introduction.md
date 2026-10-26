@@ -40,7 +40,7 @@ every deployment you might want later.
 
 You have a Rust service with durable, queryable local state: inboxes,
 catalogs, ledgers, queues, session stores. Your schema is known at
-compile time and your queries are fixed — you can list them, because
+compile time and your queries are fixed. You can list them, because
 you're about to write each one down as a function. You want to start
 with a file and maybe grow into hosted multi-client access without
 rewriting application logic.
@@ -49,9 +49,9 @@ rewriting application logic.
 
 You need ad-hoc or user-supplied queries. There is no query string
 and no runtime planner; every operation is declared in Rust up front.
-You need non-Rust callers — the only stable interface is the Rust API
+You need non-Rust callers: the only stable interface is the Rust API
 (plus the `.lightshade` CLI path, which is a development tool, not a
-protocol promise). You need schema-less data — every field has one of
+protocol promise). You need schema-less data: every field has one of
 fourteen storage types, and the compiler will tell you about it.
 
 ## One schema, every deployment
@@ -69,7 +69,7 @@ matrix.
 Tutorials teach by doing: build one database, host it, evolve its
 schema. How-tos solve specific problems: backups, interchange,
 quotas, and what to do at 3 AM when something breaks. Reference is
-exhaustive on purpose — the macro, the queries, the CLI, the wire,
+exhaustive on purpose: the macro, the queries, the CLI, the wire,
 the bytes on disk, the errors. Explanation covers why it looks this
 way: the pipeline, the guarantees, the threat model.
 

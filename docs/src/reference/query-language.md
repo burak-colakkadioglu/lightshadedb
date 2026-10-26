@@ -1,7 +1,7 @@
 # Query language
 
 Queries are Rust expressions over generated field handles. They lower
-to compiler IR and specialize at compile time — there are no query
+to compiler IR and specialize at compile time. There are no query
 strings, no runtime planner, and no stringly-typed anything.
 
 ## Predicates
@@ -15,17 +15,17 @@ Message::priority.is_null()
 ```
 
 Field comparisons: `eq`, `ne`, `lt`, `le`, `gt`, `ge` (against
-values), `eq_field` (against another field — the only join
+values), `eq_field` (against another field, the only join
 predicate), `between` (inclusive range), `in_` (value list).
 Combinators: `&`, `|`, `!` plus `.and()`, `.or()`, `.not()`.
 Nullable columns add `is_null()` / `is_not_null()`. Comparing
-against `None` is rejected with a pointer to `is_null()` — the type
+against `None` is rejected with a pointer to `is_null()`. The type
 system keeps `Option` out of operation parameters entirely.
 
 ## Limits are flexible, within reason
 
 `limit` and `offset` accept integer operation parameters *or*
-integer literals — both lower to the same plan. Counts accept only a
+integer literals. Both lower to the same plan. Counts accept only a
 filter; ordering or paging a count is a compile error, because a
 count has exactly one row and the extra clauses would be lies.
 
@@ -40,7 +40,7 @@ over nullable columns are heavily gated at lowering: inserts, gets,
 scans, counts, and patches work, but nullable join keys are rejected
 outright and many nullable-column queries won't lower yet. If the
 compiler refuses your nullable query, it's a missing feature with a
-clear error, not a subtle wrong answer — and wrong answers would be
+clear error, not a subtle wrong answer. And wrong answers would be
 worse.
 
 ## Ordering and paging
@@ -70,7 +70,7 @@ fn summary(&self, inbox: i64) -> Result<Vec<Summary>>;
 
 `count()`, `min(field)`, `max(field)`, `sum(field)`, `avg(field)`.
 `sum` over text is rejected (`this aggregate requires a numeric
-field`) — the compiler checks, the runtime never sees it.
+field`). The compiler checks. The runtime never sees it.
 `group_by` takes grouped fields (`.group()`); aggregates never return
 `NULL`, so empty inputs still produce driver rows.
 
@@ -80,7 +80,7 @@ field`) — the compiler checks, the runtime never sees it.
 joins = (Inbox.join_on(Message::inbox_id.eq_field(Inbox::id)),),
 ```
 
-`TableHandle::join_on` plus `eq_field` — and only `eq_field`.
+`TableHandle::join_on` plus `eq_field`. Only `eq_field`.
 `select` can then pull fields from any source. Anything else
 (`ne_field`, nullable keys) fails at lowering with the reason
 spelled out.
@@ -92,5 +92,5 @@ i32 i64 u8 u16 u32 u64 f32 f64 bool text bytes uuid`. Typed `NULL`
 is tag 14 followed by the declared type's tag, with no payload.
 `Field<T, V>` handles carry name and type at compile time, so
 `Message::sent_at.eq("nope")` fails to compile instead of failing a
-row at runtime. The same types flow through storage, wire, and CSV —
-one mapping, everywhere.
+row at runtime. The same types flow through storage, wire, and CSV.
+One mapping, everywhere.

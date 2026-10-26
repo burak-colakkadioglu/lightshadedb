@@ -33,7 +33,7 @@ id = "tester"
 Modes: `embedded` (needs `path`), `host` (`path` + `listen` +
 `access`, optional allowlist + credentials), `client` (`endpoint` +
 credentials). Host entries hold the schema's `Server` (gated on the
-`host` feature — missing features are a compile error, not a
+`host` feature; missing features are a compile error, not a
 surprise); embedded and client entries hold the schema's `App`.
 
 ## The macro
@@ -53,7 +53,7 @@ credentials and fingerprints.
 
 Every entry is overridable without touching the file. Note the one
 everyone gets wrong: `LIGHTSHADE_<ID>_CREDENTIALS` overrides the
-credentials *file path*, not the identity — the id comes from the
+credentials *file path*, not the identity. The id comes from the
 TOML `[database.<id>.credentials]` table and the secret from
 `LIGHTSHADE_<ID>_SECRET`.
 
@@ -66,7 +66,7 @@ TOML `[database.<id>.credentials]` table and the secret from
 | `LIGHTSHADE_<ID>_SECRET` | credential secret |
 | `LIGHTSHADE_<ID>_ALLOW` | allowlist networks |
 
-`allow = [...]` sets the TCP CIDR allowlist (host mode only —
+`allow = [...]` sets the TCP CIDR allowlist (host mode only;
 anything else is rejected), validated when the macro expands and
 enforced pre-handshake after `NetworkAccess`. Entry ids sanitize to
 field names (`-` becomes `_`, collisions are an error), and the env

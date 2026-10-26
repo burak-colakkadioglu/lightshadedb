@@ -9,7 +9,7 @@ There are no "fix it later" commits.
 
 ## How work gets done
 
-Subagents and exploration are read-only recon — they map the
+Subagents and exploration are read-only recon: they map the
 territory, they don't change it. Changes land as small commits with
 the gates above passing at each step. Splits and refactors must be
 logic-free: byte-identical generated output is the proof
@@ -33,7 +33,7 @@ database lives there.
 
 New diagnostics need a compile-fail case. New storage behavior
 needs a fault-injection or recovery case. New CLI output needs a
-`cli.rs` case, including the exit code. No test, no merge — the
+`cli.rs` case, including the exit code. No test, no merge: the
 table above is the definition of "covered."
 
 Contributions are dual-licensed MIT OR Apache-2.0 under the root
@@ -43,11 +43,11 @@ file before your first PR.
 
 ## Drills
 
-- `restore-drill.sh` — backup → checksums → simulated loss →
+- `restore-drill.sh`: backup → checksums → simulated loss →
   restore → canary read, then torn-WAL recovery and
   snapshot-damage rejection. Run it after touching backup,
   restore, verify, or file-permission code.
-- `soak.sh` — 60+ seconds of concurrent readers and writers with
+- `soak.sh`: 60+ seconds of concurrent readers and writers with
   group commit, tiny checkpoints, and the audit log on. Run it
   after touching the server, pool, WAL, or checkpoint paths. Slow
   by design and opt-in; it is correctly *not* in the matrix.
@@ -55,10 +55,10 @@ file before your first PR.
 ## Docs
 
 This book is the documentation, and the code carries no comments by
-policy — which means behavior changes must update the relevant page
+policy, which means behavior changes must update the relevant page
 in the same commit. New operations touch the query-language and
 schema-macro pages; new flags touch the CLI reference; new versions
 touch the storage-format table; new errors touch the error-model
 table; new knobs touch the environment page. The `cli.md` command
-table should match `--help` verbatim — if they disagree, the page
+table should match `--help` verbatim. If they disagree, the page
 is the bug.

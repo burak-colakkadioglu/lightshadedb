@@ -40,12 +40,12 @@ and `explain` take no database; `init` takes a destination path;
 
 Stable and asserted: `0` success, `2` usage error (anything starting
 with `usage:`), `1` runtime failure. Library errors add 3 through 8
-(corruption, conflict, auth, quota, unsupported, migration — see
+(corruption, conflict, auth, quota, unsupported, migration; see
 [Error model](error-model.md)). Scripts should branch on the code,
 not on stderr text.
 
 `--help` is canonical. If this page and `--help` ever disagree,
-`--help` wins and the page is a bug — report both texts.
+`--help` wins and the page is a bug. Report both texts.
 
 ## Notes worth knowing
 
@@ -57,10 +57,10 @@ not on stderr text.
   and refuses to run destructive plans without `--allow-destructive`.
 - **`recover`** replays by default; `--discard-wal` quarantines the
   WAL aside and only deletes it on success, restoring it on failure.
-- **`explain`** with no operation explains everything — handy in CI
+- **`explain`** with no operation explains everything. Handy in CI
   to catch plan regressions.
 - **`build`** caching means repeat `run` invocations skip `rustc`;
   the cache lives `0700` and refuses symlinks.
 - **`init`** writes the manifest itself with a versioned dependency,
-  so don't hand-write `Cargo.toml` first and scaffold second —
-  re-init without `--force` errors.
+  so don't hand-write `Cargo.toml` first and scaffold second.
+  Re-init without `--force` errors.

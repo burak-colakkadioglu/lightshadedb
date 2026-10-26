@@ -23,7 +23,7 @@ pub mod store {
 ```
 
 Tables are structs with named fields. Skipped structs are
-projections for `select` queries — never stored, no primary key
+projections for `select` queries: never stored, no primary key
 needed.
 
 ## The rules, up front
@@ -77,12 +77,12 @@ pub trait Messages {
 
 Reads take `&self` and return rows (`Vec<Row>`, or `i64` for `count`).
 Writes take `&mut self` and return affected-row counts. `update`
-*requires* `set` — unbounded rewrites are compile errors, not
+*requires* `set`: unbounded rewrites are compile errors, not
 footguns. `delete` takes an optional filter. `count` accepts *only* a
 filter: no ordering, paging, joins, grouping, or projections on a
 count.
 
-Joins only accept `eq_field` — `ne_field` exists on field handles but
+Joins only accept `eq_field`. `ne_field` exists on field handles but
 the lowering rejects anything but equi-joins, because only equality
 preserves the index story. Joins over nullable keys are rejected for
 the same reason: nullability would make the predicate three-valued
@@ -107,7 +107,7 @@ For a module `store`:
 - `store::Client` (+ `ClientOptions`) under `client`,
   `store::Server` (+ `ServeOptions`) under `host`, and the async
   `AsyncClient` / `Transaction` / `Pooled` types under
-  `client` **and** `async` together — `async` alone generates no
+  `client` **and** `async` together. `async` alone generates no
   handles.
 
 ## Diagnostics
@@ -115,7 +115,7 @@ For a module `store`:
 Schema violations name the table, the field, and the rule
 (`duplicate field`, `missing primary key`, `nullable primary key`,
 `unknown field`, `duplicate operation`). The compile-fail suite pins
-the important messages — enough that refactoring the macro can't
+the important messages, enough that refactoring the macro can't
 silently degrade them, though not literally every diagnostic has a
 case. If you hit an unpinned message that's confusing, that's a bug
 report, not a rite of passage.

@@ -4,7 +4,7 @@
 
 `Backend::transaction` runs a closure atomically: `Ok` commits,
 `Err` rolls back. Use the closure form unless you have a reason not
-to — it makes the atomic boundary visible and unmissable. Explicit
+to. It makes the atomic boundary visible and unmissable. Explicit
 `begin` / `commit` / `rollback` cover the shapes closures can't.
 The async `Transaction` handle consumes itself on commit or rollback
 and poisons its connection on drop: abandoning one rolls back
@@ -22,7 +22,7 @@ my machine" isolation levels to configure.
 Every acknowledged write is fsync'd (possibly batched inside the
 group-commit window) before its call returns. Checkpoints preserve
 only acknowledged writes: after a crash, the database holds a prefix
-of the acknowledged sequence — never a suffix with holes, never a
+of the acknowledged sequence: never a suffix with holes, never a
 torn middle. `automatic_checkpoints_preserve_acknowledged_writes`
 pins this, and the soak suite hammers it for over a minute of
 concurrent readers and writers with tiny checkpoints and the audit
@@ -36,7 +36,7 @@ log on.
 3. Truncate a torn tail to the last committed prefix.
 4. Replay records; adopt effects into live state.
 
-Readers open across the crash are unaffected — each sees the prefix
+Readers open across the crash are unaffected. Each sees the prefix
 that was committed when its snapshot was taken. The fault-injection
 suite breaks this on purpose with an `LD_PRELOAD` shim that fails
 writes, syncs, and renames at scripted points
@@ -47,8 +47,8 @@ to complain.
 
 ## What is *not* guaranteed
 
-- Unacknowledged writes — returned but not fsync'd before the crash
-  — may be lost. The group-commit window trades latency for exactly
+- Unacknowledged writes (returned but not fsync'd before the crash)
+  may be lost. The group-commit window trades latency for exactly
   this exposure. Size it deliberately.
 - Anything after the last checkpoint is gone when the WAL is
   discarded. Size checkpoints against the backup window, not against

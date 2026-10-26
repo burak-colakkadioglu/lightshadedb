@@ -10,7 +10,7 @@ Rust schema ──▶ macro ──▶ lowered IR ──▶ validate ──▶ pl
 
 **Parse** turns `.lightshade` text or macro input into workload IR:
 tables, fields, types, operations. **Validate** enforces every
-structural rule exactly once — primary keys, nullable restrictions,
+structural rule exactly once: primary keys, nullable restrictions,
 operation shapes, name resolution. **Plan** picks indexes, counters,
 and key expressions per operation and fingerprints the schema and
 workload. **Emit** splices runtime templates (storage engine,
@@ -32,8 +32,8 @@ point lookup, range seek, or scan with a maintained counter where
 one exists. Advanced queries (joins, grouping, multi-source
 predicates) resolve every operand to its source before emitting
 nullable-aware comparisons. There is nothing to tune and nothing to
-`ANALYZE`. If the plan is wrong, the schema or the query is wrong —
-and `explain` shows the chosen path per operation, so you can see
+`ANALYZE`. If the plan is wrong, the schema or the query is wrong.
+`explain` shows the chosen path per operation, so you can see
 that for yourself.
 
 ## One lowering, every handle
@@ -44,19 +44,19 @@ stream). The blocking and async transports share the wire codec
 (`encode_hello`, `decode_handshake_response`, `encode_request`,
 `decode_response`), so both emit byte-identical handshakes and
 frames. A byte the blocking client sends is a byte the async client
-would send — the compatibility suite pins this rather than trusting
+would send, and the compatibility suite pins this rather than trusting
 it.
 
 ## Where the code lives
 
-- `macros/` — proc macros: schema model, lowering, per-handle
+- `macros/`: proc macros: schema model, lowering, per-handle
   expansion (`expand/{db,table,ops,backend,client,server,app,
   migration,types}`).
-- `codegen/` — the compiler: IR (`ir/`), planner (`plan.rs`),
+- `codegen/`: the compiler: IR (`ir/`), planner (`plan.rs`),
   emitters (`common`, `persist/`, `emit_write`, `emit_query`),
   legacy interface (`compiler/interface/`), templates
   (`compiler/runtime/`).
-- `src/` — the facade: public types, `Backend`, pool, dataplane,
+- `src/`: the facade: public types, `Backend`, pool, dataplane,
   wire codec, CLI binary.
 
 The dependency rule is one-directional: `src` and `macros` consume

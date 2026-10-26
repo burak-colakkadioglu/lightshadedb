@@ -11,7 +11,7 @@ Magic `LSRP`, version `u32` (currently `5`). Every frame is
 length-prefixed (`u32` little-endian) with a 256 MiB cap
 (`MAX_FRAME`); handshake payloads cap at 64 KiB
 (`MAX_HANDSHAKE`). An oversized length is a `Protocol` error; a
-short read is an I/O error — the distinction matters because only
+short read is an I/O error. The distinction matters because only
 the former says "the peer is speaking nonsense" as opposed to "the
 network died." Either way, that connection is done. Malformed frames
 never take down the server, only the offending connection.
@@ -32,8 +32,8 @@ Unknown database names fail identically to bad credentials
 
 One request, one response. Kinds are tagged `0..=3`: `Operation`
 (carries index plus typed parameters), `Begin`, `Commit`,
-`Rollback`. Non-operation requests carry no index and no parameters —
-the encoder omits them. Operation indexes are positions in the
+`Rollback`. Non-operation requests carry no index and no parameters.
+The encoder omits them. Operation indexes are positions in the
 workload's operation table, not names: renaming an operation without
 rebuilding both sides breaks the pairing, which is why client and
 server builds pin the same workload fingerprint.
@@ -44,8 +44,8 @@ Fourteen typed values plus typed `NULL` (tag 14 + declared type tag,
 no payload). Texts and byte strings are length-prefixed; UTF-8 is
 validated on decode. Rows encode as a `u32` count followed by flat
 values; parameter lists cap at a million entries. Short reads,
-unknown tags, and bad UTF-8 all decode to `Protocol` errors — never
-panics, never silent truncation.
+unknown tags, and bad UTF-8 all decode to `Protocol` errors:
+never panics, never silent truncation.
 
 ## Errors on the wire
 
@@ -66,5 +66,5 @@ timeout. The retry policy lives client-side and is deliberately
 narrow: pooled single operations retry errors reporting
 `is_retryable()`, sleeping `retry_after()` when present, up to
 `max_retries`. Timeouts are never retried. Transactions surface
-errors instead of retrying — replaying a transaction's prefix
+errors instead of retrying. Replaying a transaction's prefix
 without its context would be worse than failing.

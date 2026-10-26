@@ -39,7 +39,7 @@ units, so read the unit column, not your instincts.
 | Variable | Default | Meaning |
 |---|---|---|
 | `LIGHTSHADE_SLOW_LOG` | off | JSONL slow-query log path |
-| `LIGHTSHADE_SLOW_MS` | 100 ms | sampling threshold; logs strategy, timing, rows — never parameters |
+| `LIGHTSHADE_SLOW_MS` | 100 ms | sampling threshold; logs strategy, timing, rows. Never parameters |
 
 ## Application and migration
 
@@ -50,7 +50,7 @@ units, so read the unit column, not your instincts.
 | `LIGHTSHADE_ENDPOINT` | required in client mode | endpoint (`tcp://`, `unix://`, bare path) or `lightshadedb://` connection URL for `from_env` |
 | `LIGHTSHADE_MIGRATION_BACKUP` | true | back up before `--apply` |
 | `LIGHTSHADE_ALLOW_DESTRUCTIVE_MIGRATION` | false | allow destructive steps |
-| `LIGHTSHADE_<ID>_PATH` et al. | — | per-registry-entry overrides ([Registry](registry.md)) |
+| `LIGHTSHADE_<ID>_PATH` et al. | varies | per-registry-entry overrides ([Registry](registry.md)) |
 
 ## CLI internals
 

@@ -15,9 +15,9 @@ limit. Nothing is silently dropped, nothing half-applies.
 
 Now the part that surprises people: quota errors are **never
 retryable**, even though they carry a `retry_after` hint (one
-second). Retrying an over-limit write cannot succeed — fix the
+second). Retrying an over-limit write cannot succeed. Fix the
 request or raise the limit. The only retryable errors are `Conflict`
-(no delay — retry immediately) and `Busy` (50 ms hint). The pool
+(no delay; retry immediately) and `Busy` (50 ms hint). The pool
 knows this: it sleeps only when a hint exists, retries only what
 reports retryable, and never retries timeouts at all.
 
@@ -29,7 +29,7 @@ conflate:
 - **Group commit** batches fsyncs inside a microsecond window.
   Generated servers default to 1 ms; the legacy CLI path reads
   `LIGHTSHADE_GROUP_COMMIT_US` (default 1000 µs, capped at a second).
-  The soak script runs at exactly the default — it's not special
+  The soak script runs at exactly the default. It's not special
   tuning, it's the steady state. Raise the window when `verify` is
   healthy but throughput plateaus on fsync latency.
 - **Checkpoints** fire at `LIGHTSHADE_CHECKPOINT_BYTES` (default
@@ -52,8 +52,8 @@ on normal shutdown; after a crash, stale spill is ignored, never
 replayed.
 
 `LIGHTSHADE_AUDIT_LOG` appends one JSON object per connection
-lifecycle event. It's observability, not a WAL — never parse it for
+lifecycle event. It's observability, not a WAL. Never parse it for
 recovery, and rotate it like any other log. Slow-query sampling
 (`LIGHTSHADE_SLOW_LOG`, threshold `LIGHTSHADE_SLOW_MS`, default
-100 ms) records operation, strategy, timing, and rows — never
+100 ms) records operation, strategy, timing, and rows. Never
 parameters.

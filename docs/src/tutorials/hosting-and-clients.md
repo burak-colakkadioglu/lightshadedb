@@ -1,6 +1,6 @@
 # Hosting and clients
 
-Your schema already compiles to a server and to clients — no new
+Your schema already compiles to a server and to clients. No new
 code, just new handles. This page serves the database from the last
 tutorial and connects to it three ways.
 
@@ -15,7 +15,7 @@ let listen = lightshadedb::Listen::tcp_local(7171);
 
 `tcp_local` binds loopback with a loopback-only policy.
 `tcp_local_network` and `tcp_external` take a full `SocketAddr` and
-pair it with the matching policy — including wildcard binds, which
+pair it with the matching policy, including wildcard binds, which
 are allowed under `LocalNetwork` and refused under `Local`. For
 anything internet-facing, parse and constrain:
 
@@ -30,7 +30,7 @@ access policy. `validate()` rejects policy/address mismatches before
 a socket ever opens, so misconfiguration fails at startup, not at
 2 AM.
 
-The legacy CLI also serves, with narrower syntax — it takes a
+The legacy CLI also serves, with narrower syntax: it takes a
 workload file and a database, binds a Unix socket by default, and
 only speaks TCP when `LIGHTSHADE_LISTEN` says so:
 
@@ -47,7 +47,7 @@ The database segment selects which database on that listener you
 authenticate against; path endpoints always mean `"default"`.
 
 A blocking `Client` mirrors the embedded API over one stream. It's
-`Send` but not `Sync` — think one client per thread, built on an
+`Send` but not `Sync`: think one client per thread, built on an
 interior `RefCell`, configured with `ClientOptions` (credentials,
 5-second connect timeout, 30-second I/O timeout). For sharing across
 async tasks, reach for the pool:
@@ -69,7 +69,7 @@ honoring `retry_after`; timeouts are never retried, and transactions
 surface errors instead of retrying.
 
 Pool handles need *both* the `client` and `async` features. `async`
-alone buys you a Tokio dependency and nothing else — the generated
+alone buys you a Tokio dependency and nothing else. The generated
 `AsyncClient`, `Transaction`, and `Pooled` types sit behind
 `all(feature = "client", feature = "async")`.
 

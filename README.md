@@ -10,11 +10,11 @@ Maintained by [Lightshade](https://github.com/burak-colakkadioglu).
 
 ## Why it exists
 
-- Your schema is known at compile time and your queries are fixed — so
+- Your schema is known at compile time and your queries are fixed, so
   the database should be generated for exactly those, not interpreted
   at runtime.
 - You want to start with a local file and maybe grow into hosted,
-  multi-client access later — without rewriting application logic.
+  multi-client access later, without rewriting application logic.
 - Durable by default: crash-safe writes, checksummed storage,
   explicit quotas.
 
@@ -86,15 +86,15 @@ The book is the documentation. Build it and start here:
 $ mdbook build docs
 ```
 
-- [Your first database](docs/src/tutorials/first-database.md) — the
+- [Your first database](docs/src/tutorials/first-database.md): the
   ten-minute tutorial. Start here.
-- [Deployment modes](docs/src/reference/deployment-modes.md) — which
+- [Deployment modes](docs/src/reference/deployment-modes.md): which
   feature to pick and why.
-- [How-tos](docs/src/howto/backups-and-restore.md) — backups, CSV and
+- [How-tos](docs/src/howto/backups-and-restore.md): backups, CSV and
   dumps, quotas, incident drill.
-- [Reference](docs/src/reference/cli.md) — macro, queries, CLI, wire
+- [Reference](docs/src/reference/cli.md): macro, queries, CLI, wire
   protocol, bytes on disk, errors.
-- [Explanation](docs/src/explanation/architecture.md) — why it looks
+- [Explanation](docs/src/explanation/architecture.md): why it looks
   this way.
 
 Runnable code lives in [`examples/`](examples/).
@@ -104,7 +104,7 @@ Runnable code lives in [`examples/`](examples/).
 The tree stays green: `cargo fmt --check`, `cargo clippy --workspace
 --all-targets -- -D warnings`, workspace tests, and
 `scripts/matrix.sh --tests` pass on every commit. No comments in code,
-ever — explain it in the book instead.
+ever. Explain it in the book instead.
 
 See [CONTRIBUTING](CONTRIBUTING) (including the relicensing grant) and
 the [Code of Conduct](CODE_OF_CONDUCT.md). Use the issue

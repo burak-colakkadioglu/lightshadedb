@@ -1,7 +1,7 @@
 # Dumps and CSV interchange
 
 Two formats, both directions, identical bytes whether you use the CLI
-or the Rust API — the compatibility suite pins that byte-for-byte, so
+or the Rust API. The compatibility suite pins that byte-for-byte, so
 pick whichever side is convenient and stop worrying.
 
 ## Portable dumps (`LIGHTDMP` v1)
@@ -30,7 +30,7 @@ to restoring it. Use it when accepting dumps from anywhere
 untrusted.
 
 Restores are strict and non-transactional: a malformed dump fails the
-whole restore instead of applying half of it. That's a feature — a
+whole restore instead of applying half of it. That's a feature: a
 half-restored database is worse than no restore.
 
 ## CSV
@@ -44,7 +44,7 @@ $ lightshade export messages.lightshade messages.lsdb messages messages.csv
 $ lightshade import messages.lightshade fresh.lsdb messages messages.csv
 ```
 
-Note the table name is `messages`, plural, exactly as declared —
+Note the table name is `messages`, plural, exactly as declared.
 `message` fails with `unknown table`, and rightly so. In Rust:
 
 ```rust
@@ -55,8 +55,8 @@ db.import_csv::<store::Message>("messages.csv")?;
 Two sharp edges, both deliberate. Export uses `create_new`
 semantics: the destination must not exist, so rotate old exports out
 of the way first. Import reads the whole file into memory before
-validating types — the CLI streams rows, the `Backend` API path does
-not — so size your imports (and your machines) accordingly.
+validating types: the CLI streams rows, the `Backend` API path does
+not. So size your imports (and your machines) accordingly.
 
 ## Choosing between them
 
@@ -69,8 +69,8 @@ not — so size your imports (and your machines) accordingly.
 
 ## Reports
 
-Every operation returns a report — `DumpReport`, `RestoreReport`,
-`ExportReport`, `ImportReport` — with row counts and destinations.
+Every operation returns a report (`DumpReport`, `RestoreReport`,
+`ExportReport`, `ImportReport`) with row counts and destinations.
 Assert on them in pipelines. "Export said 10,000 rows, import says
 9,999" is a discrepancy you want to catch in code, not discover in
 an audit.

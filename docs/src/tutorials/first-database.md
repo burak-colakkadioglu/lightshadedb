@@ -18,8 +18,8 @@ $ cargo run
 `init` writes you a crate: a manifest with a versioned dependency
 (no path hacks, no git clones), a `store` module with one table and
 one query, and a `main.rs` that inserts a row and reads it back. It
-takes `--name`, `--features` (`embedded`, `host`, or `client` —
-`host` pulls in `embedded` automatically), and `--force` to overwrite
+takes `--name`, `--features` (`embedded`, `host`, or `client`; `host`
+pulls in `embedded` automatically), and `--force` to overwrite
 an existing directory. If you'd rather wire the manifest yourself:
 
 ```toml
@@ -60,7 +60,7 @@ pub struct Message {
 }
 ```
 
-Exactly one primary key — zero or two is a compile error, and it names
+Exactly one primary key: zero or two is a compile error, and it names
 the table. `Option<T>` fields are nullable end to end, but there are
 two rejections to know about now: no nullable primary keys, and no
 nested `Option<Option<T>>`. Both fail at compile time with the field
@@ -98,7 +98,7 @@ pub trait Messages {
 
 Two rules to know: `update` *requires* a `set`
 clause, so you can't accidentally rewrite a table, and `count`
-queries reject everything except a filter — no ordering, no paging, no
+queries reject everything except a filter: no ordering, no paging, no
 joins on a count. The full rulebook is [Schema macro](../reference/schema-macro.md).
 
 ## 4. Open and use
@@ -114,7 +114,7 @@ assert_eq!(app.recent_unread(7, 10)?.len(), 0);
 ```
 
 Want a scratch database that vanishes? There's no magic `":memory:"`
-path — that would just create a file with a silly name. Generated
+path. That would just create a file with a silly name. Generated
 handles have a dedicated constructor for it:
 
 ```rust
@@ -129,7 +129,7 @@ different environment, no recompilation.
 
 ## 5. Transactions
 
-The closure form commits on `Ok` and rolls back on `Err` — use it by
+The closure form commits on `Ok` and rolls back on `Err`; use it by
 default:
 
 ```rust
