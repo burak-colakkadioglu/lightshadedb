@@ -32,9 +32,10 @@ Unknown database names fail identically to bad credentials
 
 ## Requests
 
-One request, one response. Kinds are tagged `0..=5`: `Operation`
+One request, one response. Kinds are tagged `0..=6`: `Operation`
 (carries index plus typed parameters), `Begin`, `Commit`,
-`Rollback`, `WalMeta` (no parameters: primary answers schema
+`Rollback`, `Checkpoint` (no parameters: server runs a checkpoint
+including spill vacuum and answers empty), `WalMeta` (no parameters: primary answers schema
 fingerprint, LSN, and valid WAL length in bytes), `WalChunk` (takes u64 offset and
 length, answers the raw WAL bytes). Non-operation requests carry no
 index; `WalMeta` and `WalChunk` carry parameters. The encoder omits

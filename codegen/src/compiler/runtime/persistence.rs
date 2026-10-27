@@ -645,6 +645,12 @@ impl __LsFx {
     }
 }
 
+impl Default for __LsFx {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl std::hash::Hasher for __LsFx {
     fn write(&mut self, bytes: &[u8]) -> () {
         let mut hash = self.0;

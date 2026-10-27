@@ -690,6 +690,17 @@ pub(crate) fn client_wrapper(
                 Ok(())
             }
 
+            pub fn checkpoint(&mut self) -> ::lightshadedb::Result<()> {
+                let mut inner = self.inner.borrow_mut();
+                ::lightshadedb::wire::request(
+                    &mut inner.stream,
+                    ::lightshadedb::wire::RequestKind::Checkpoint,
+                    0,
+                    &[],
+                )?;
+                Ok(())
+            }
+
             pub fn transaction<T>(
                 &mut self,
                 f: impl ::std::ops::FnOnce(&mut Client) -> ::lightshadedb::Result<T>,
@@ -1101,6 +1112,14 @@ pub(crate) fn async_client_wrapper(
                     .request(::lightshadedb::wire::RequestKind::Begin, 0, &[])
                     .await?;
                 ::std::result::Result::Ok(Transaction { pooled, open: true })
+            }
+
+            pub async fn checkpoint(&self) -> ::lightshadedb::Result<()> {
+                let pooled = self.pool.get().await?;
+                pooled
+                    .request(::lightshadedb::wire::RequestKind::Checkpoint, 0, &[])
+                    .await?;
+                ::std::result::Result::Ok(())
             }
 
             #(#async_crud)*

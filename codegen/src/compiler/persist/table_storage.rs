@@ -69,12 +69,12 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "    arena: Vec<Vec<u8>>,").unwrap();
         writeln!(
             out,
-            "    overflow: std::collections::HashMap<{storage_key}, {row}>,"
+            "    overflow: std::collections::HashMap<{storage_key}, {row}, std::hash::BuildHasherDefault<__LsFx>>,"
         )
         .unwrap();
         writeln!(
             out,
-            "    cache: [std::sync::RwLock<std::collections::HashMap<{storage_key}, ({row}, u64, u64)>>; 16],"
+            "    cache: [std::sync::RwLock<std::collections::HashMap<{storage_key}, ({row}, u64, u64), std::hash::BuildHasherDefault<__LsFx>>>; 16],"
         )
         .unwrap();
         writeln!(
@@ -126,7 +126,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "        let spill = options.open(&path)?;").unwrap();
         writeln!(
             out,
-            "        Ok({store} {{ slots: {slot_new}, spill: std::sync::RwLock::new(Some(spill)), spill_len: std::sync::atomic::AtomicU64::new(0), staging: std::sync::RwLock::new(__LsStaging {{ base: 0, buf: Vec::new() }}), spill_path: path, direct: false, arena: Vec::new(), overflow: std::collections::HashMap::new(), cache: std::array::from_fn(|_| std::sync::RwLock::new(std::collections::HashMap::new())), order: std::array::from_fn(|_| std::sync::Mutex::new(std::collections::VecDeque::new())), cached_bytes: std::sync::atomic::AtomicU64::new(0), shard_bytes: std::array::from_fn(|_| std::sync::atomic::AtomicU64::new(0)), stamp: std::sync::atomic::AtomicU64::new(0), budget }})"
+            "        Ok({store} {{ slots: {slot_new}, spill: std::sync::RwLock::new(Some(spill)), spill_len: std::sync::atomic::AtomicU64::new(0), staging: std::sync::RwLock::new(__LsStaging {{ base: 0, buf: Vec::new() }}), spill_path: path, direct: false, arena: Vec::new(), overflow: std::collections::HashMap::with_hasher(Default::default()), cache: std::array::from_fn(|_| std::sync::RwLock::new(std::collections::HashMap::with_hasher(Default::default()))), order: std::array::from_fn(|_| std::sync::Mutex::new(std::collections::VecDeque::new())), cached_bytes: std::sync::atomic::AtomicU64::new(0), shard_bytes: std::array::from_fn(|_| std::sync::atomic::AtomicU64::new(0)), stamp: std::sync::atomic::AtomicU64::new(0), budget }})"
         )
         .unwrap();
         writeln!(out, "    }}").unwrap();
@@ -135,7 +135,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "    fn __ls_create_direct() -> io::Result<{store}> {{").unwrap();
         writeln!(
             out,
-            "        Ok({store} {{ slots: {slot_new}, spill: std::sync::RwLock::new(None), spill_len: std::sync::atomic::AtomicU64::new(0), staging: std::sync::RwLock::new(__LsStaging {{ base: 0, buf: Vec::new() }}), spill_path: PathBuf::new(), direct: true, arena: Vec::new(), overflow: std::collections::HashMap::new(), cache: std::array::from_fn(|_| std::sync::RwLock::new(std::collections::HashMap::new())), order: std::array::from_fn(|_| std::sync::Mutex::new(std::collections::VecDeque::new())), cached_bytes: std::sync::atomic::AtomicU64::new(0), shard_bytes: std::array::from_fn(|_| std::sync::atomic::AtomicU64::new(0)), stamp: std::sync::atomic::AtomicU64::new(0), budget: 0 }})"
+            "        Ok({store} {{ slots: {slot_new}, spill: std::sync::RwLock::new(None), spill_len: std::sync::atomic::AtomicU64::new(0), staging: std::sync::RwLock::new(__LsStaging {{ base: 0, buf: Vec::new() }}), spill_path: PathBuf::new(), direct: true, arena: Vec::new(), overflow: std::collections::HashMap::with_hasher(Default::default()), cache: std::array::from_fn(|_| std::sync::RwLock::new(std::collections::HashMap::with_hasher(Default::default()))), order: std::array::from_fn(|_| std::sync::Mutex::new(std::collections::VecDeque::new())), cached_bytes: std::sync::atomic::AtomicU64::new(0), shard_bytes: std::array::from_fn(|_| std::sync::atomic::AtomicU64::new(0)), stamp: std::sync::atomic::AtomicU64::new(0), budget: 0 }})"
         )
         .unwrap();
         writeln!(out, "    }}").unwrap();
@@ -781,6 +781,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
             writeln!(out, "            if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
             writeln!(out, "            return Some(row.clone());").unwrap();
             writeln!(out, "        }}").unwrap();
+            writeln!(out, "        if !self.overflow.is_empty() {{").unwrap();
             writeln!(
                 out,
                 "        if let Some(row) = self.overflow.get(&__ls_key) {{"
@@ -788,6 +789,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
             .unwrap();
             writeln!(out, "            if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
             writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
             writeln!(out, "        }}").unwrap();
             writeln!(out, "        let slot = {slot_get};").unwrap();
             writeln!(
@@ -802,12 +804,14 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
             writeln!(out, "        if let Some((row, _, _)) = self.cache[__ls_shard].read().unwrap().get(&__ls_key) {{").unwrap();
             writeln!(out, "            return Some(row.clone());").unwrap();
             writeln!(out, "        }}").unwrap();
+            writeln!(out, "        if !self.overflow.is_empty() {{").unwrap();
             writeln!(
                 out,
                 "        if let Some(row) = self.overflow.get(&__ls_key) {{"
             )
             .unwrap();
             writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
             writeln!(out, "        }}").unwrap();
             writeln!(out, "        let slot = {slot_get};").unwrap();
             writeln!(
@@ -836,12 +840,14 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
             writeln!(out, "        if let Some((row, _, _)) = self.cache[__ls_shard].read().unwrap().get(&__ls_key) {{").unwrap();
             writeln!(out, "            return Some(row.clone());").unwrap();
             writeln!(out, "        }}").unwrap();
+            writeln!(out, "        if !self.overflow.is_empty() {{").unwrap();
             writeln!(
                 out,
                 "        if let Some(row) = self.overflow.get(&__ls_key) {{"
             )
             .unwrap();
             writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
             writeln!(out, "        }}").unwrap();
             writeln!(out, "        let slot = {slot_get};").unwrap();
             writeln!(
@@ -875,6 +881,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
             }
             writeln!(out, "        }}").unwrap();
             if is_ttl {
+                writeln!(out, "        if !self.overflow.is_empty() {{").unwrap();
                 writeln!(
                     out,
                     "        if let Some(row) = self.overflow.get(&__ls_key) {{"
@@ -882,6 +889,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
                 .unwrap();
                 writeln!(out, "            if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
                 writeln!(out, "            return Some(row.clone());").unwrap();
+                writeln!(out, "        }}").unwrap();
                 writeln!(out, "        }}").unwrap();
                 writeln!(out, "        let slot = self.slots.get(&__ls_key)?;").unwrap();
                 writeln!(
@@ -893,12 +901,14 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
                 writeln!(out, "        self.__ls_cache_put(key.to_string(), row.clone(), slot.1.saturating_add(128));").unwrap();
                 writeln!(out, "        Some(row)").unwrap();
             } else {
+                writeln!(out, "        if !self.overflow.is_empty() {{").unwrap();
                 writeln!(
                     out,
                     "        if let Some(row) = self.overflow.get(&__ls_key) {{"
                 )
                 .unwrap();
                 writeln!(out, "            return Some(row.clone());").unwrap();
+                writeln!(out, "        }}").unwrap();
                 writeln!(out, "        }}").unwrap();
                 writeln!(out, "        let slot = self.slots.get(&__ls_key)?;").unwrap();
                 writeln!(

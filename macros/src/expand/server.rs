@@ -489,6 +489,12 @@ pub(crate) fn server_wrapper(
                     ::std::result::Result::Err(::lightshadedb::Error::Auth(
                         ::lightshadedb::AuthError::PermissionDenied,
                     ))
+                } else if kind == ::lightshadedb::wire::RequestKind::Checkpoint
+                    && !role.can_write()
+                {
+                    ::std::result::Result::Err(::lightshadedb::Error::Auth(
+                        ::lightshadedb::AuthError::PermissionDenied,
+                    ))
                 } else if kind == ::lightshadedb::wire::RequestKind::Operation
                     && !__ls_is_write_operation(index)
                 {
@@ -589,6 +595,9 @@ pub(crate) fn server_wrapper(
                                 }
                                 ::lightshadedb::wire::RequestKind::Rollback => {
                                     db.rollback().map(|()| ::std::vec::Vec::new())
+                                }
+                                ::lightshadedb::wire::RequestKind::Checkpoint => {
+                                    db.checkpoint().map(|()| ::std::vec::Vec::new())
                                 }
                                 ::lightshadedb::wire::RequestKind::WalMeta
                                 | ::lightshadedb::wire::RequestKind::WalChunk => {

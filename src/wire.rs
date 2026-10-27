@@ -514,6 +514,7 @@ pub enum RequestKind {
     Rollback,
     WalMeta,
     WalChunk,
+    Checkpoint,
 }
 
 impl RequestKind {
@@ -525,6 +526,7 @@ impl RequestKind {
             Self::Rollback => 3,
             Self::WalMeta => 4,
             Self::WalChunk => 5,
+            Self::Checkpoint => 6,
         }
     }
 
@@ -536,6 +538,7 @@ impl RequestKind {
             3 => Self::Rollback,
             4 => Self::WalMeta,
             5 => Self::WalChunk,
+            6 => Self::Checkpoint,
             _ => return None,
         })
     }

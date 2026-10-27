@@ -547,12 +547,12 @@ fn run_lightshade_client(
         })?;
     }
     let storage_path = dir.join("storage.lsdb");
+    storage_client.checkpoint()?;
     let disk = sidecar_size(&storage_path, ".wal") + dir_size(&dir.join("storage-spill"));
     for id in (2..=rows).step_by(2) {
         storage_client.delete::<store::Message>(id as i64)?;
     }
-    // The server checkpoints automatically once the WAL passes its size
-    // threshold; there is no client-triggered compact.
+    storage_client.checkpoint()?;
     let compacted = sidecar_size(&storage_path, ".wal") + dir_size(&dir.join("storage-spill"));
     match prev_spill {
         Some(previous) => std::env::set_var("LIGHTSHADE_SPILL_DIR", previous),
