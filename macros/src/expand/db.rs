@@ -349,16 +349,7 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                 __ls_public(self.inner.__ls_shard_commit(effects))
             }
 
-            #[cfg(feature = "host")]
-            #[doc(hidden)]
-            pub fn __ls_commit_wal(&mut self, effects: &[u8]) -> ::lightshadedb::Result<u64> {
-                __ls_public(self.inner.__ls_commit_wal(effects))
-            }
 
-            #[cfg(feature = "host")]
-            fn __ls_reload(&mut self) -> ::lightshadedb::Result<()> {
-                __ls_public(self.inner.__ls_shard_reload())
-            }
 
             #[cfg(feature = "host")]
             #[doc(hidden)]

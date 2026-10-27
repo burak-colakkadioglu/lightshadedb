@@ -239,38 +239,6 @@ pub(crate) fn emit_transaction_support(
 
     writeln!(
         out,
-        "    #[doc(hidden)] pub fn __ls_commit_wal(&mut self, __ls_effects: &[u8]) -> io::Result<u64> {{"
-    )
-    .unwrap();
-    writeln!(out, "        self.__ls_writable()?;").unwrap();
-    writeln!(out, "        if __ls_effects.is_empty() {{").unwrap();
-    writeln!(out, "            return Ok(self.__ls_lsn);").unwrap();
-    writeln!(out, "        }}").unwrap();
-    writeln!(
-        out,
-        "        if let Some(message) = self.__ls_wal_quota_error(__ls_effects.len()) {{"
-    )
-    .unwrap();
-    writeln!(out, "            return Err(io::Error::other(message));").unwrap();
-    writeln!(out, "        }}").unwrap();
-    writeln!(
-        out,
-        "        if let Err(error) = self.__ls_write_batch(__ls_effects) {{"
-    )
-    .unwrap();
-    writeln!(
-        out,
-        "            self.__ls_broken = Some(error.to_string());"
-    )
-    .unwrap();
-    writeln!(out, "            return Err(error);").unwrap();
-    writeln!(out, "        }}").unwrap();
-    writeln!(out, "        self.__ls_maybe_checkpoint();").unwrap();
-    writeln!(out, "        Ok(self.__ls_lsn)").unwrap();
-    writeln!(out, "    }}").unwrap();
-    writeln!(out).unwrap();
-    writeln!(
-        out,
         "    #[doc(hidden)] pub fn __ls_shard_clone(&self) -> io::Result<Db> {{"
     )
     .unwrap();
@@ -287,14 +255,6 @@ pub(crate) fn emit_transaction_support(
     writeln!(out).unwrap();
     writeln!(out, "    #[doc(hidden)] pub fn __ls_shard_commit(&mut self, __ls_effects: &[u8]) -> io::Result<()> {{").unwrap();
     writeln!(out, "        self.__ls_commit_effects(__ls_effects)").unwrap();
-    writeln!(out, "    }}").unwrap();
-    writeln!(out).unwrap();
-    writeln!(
-        out,
-        "    #[doc(hidden)] pub fn __ls_shard_reload(&mut self) -> io::Result<()> {{"
-    )
-    .unwrap();
-    writeln!(out, "        self.__ls_reload()").unwrap();
     writeln!(out, "    }}").unwrap();
     writeln!(out).unwrap();
     writeln!(

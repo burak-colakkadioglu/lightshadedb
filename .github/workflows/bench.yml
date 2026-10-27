@@ -12,14 +12,24 @@ on:
         default: all
         type: choice
         options: [all, lightshade, lightshade-client, lightshade-client-x16, redb, sqlite, postgres]
+      threads:
+        description: Client threads for lightshade-client-x16
+        default: "16"
+        type: string
+      oses:
+        description: Operating systems to run on
+        default: all
+        type: choice
+        options: [all, linux, windows, macos]
 
-run-name: bench rows=${{ inputs.rows }} engines=${{ inputs.engines }}
+run-name: bench rows=${{ inputs.rows }} engines=${{ inputs.engines }} oses=${{ inputs.oses }}
 
 jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
       engines: ${{ steps.set.outputs.engines }}
+      oses: ${{ steps.set.outputs.oses }}
     steps:
       - id: set
         run: |
@@ -27,6 +37,15 @@ jobs:
             echo 'engines=["lightshade", "lightshade-client", "lightshade-client-x16", "redb", "sqlite", "postgres"]' >> "$GITHUB_OUTPUT"
           else
             echo 'engines=["${{ inputs.engines }}"]' >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ inputs.oses }}" = "all" ]; then
+            echo 'oses=["ubuntu-latest", "windows-latest", "macos-latest"]' >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.oses }}" = "linux" ]; then
+            echo 'oses=["ubuntu-latest"]' >> "$GITHUB_OUTPUT"
+          elif [ "${{ inputs.oses }}" = "windows" ]; then
+            echo 'oses=["windows-latest"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'oses=["macos-latest"]' >> "$GITHUB_OUTPUT"
           fi
 
   bench:
@@ -37,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON(needs.setup.outputs.oses) }}
         engine: ${{ fromJSON(needs.setup.outputs.engines) }}
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +75,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LS_BENCH_THREADS: ${{ inputs.threads }}
         run: |
           BIN=target/release/ls-bench
           OUT="results-${{ matrix.os }}-${{ matrix.engine }}.json"
