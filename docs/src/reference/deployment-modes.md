@@ -42,7 +42,11 @@ all green, or the tree isn't.
   1 s credential reload, signals off unless requested.
 - **`Client`**: blocking, one stream, one thread at a time (interior
   mutability makes it `Send` but not `Sync`). `ClientOptions`:
-  credentials, 5 s connect timeout, 30 s I/O timeout.
+  credentials, 5 s connect timeout, 30 s I/O timeout. Calls are
+  stop-and-wait, so one round trip per call; `pipeline_raw` sends a
+  batch of operation requests and reads all responses in order,
+  amortizing that round trip across the batch (a mid-batch error is
+  reported in place without desynchronizing the rest).
 - **`AsyncClient` / `Pool`**: `Send + Sync`, all-`&self` methods over
   a pool. `PoolOptions { credentials, connect_timeout: 5 s,
   io_timeout: 30 s, max_connections: 16, max_retries: 3 }`.

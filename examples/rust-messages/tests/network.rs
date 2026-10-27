@@ -667,3 +667,71 @@ fn multiplexed_databases_share_one_allowlist() {
     b1.close().unwrap();
     server.join().unwrap();
 }
+
+#[test]
+fn pipelined_reads_batch_round_trips() {
+    use lightshadedb::table::Value;
+
+    // Raw wire layout for the `store` schema: 7 user operations occupy
+    // indices 0..7, then each table owns 10 CRUD slots. `Message` is the
+    // second table, so its point-get slot is 7 + 1 * 10 + 4 = 21, and
+    // `unread_count` is user operation 2. The typed assertions below
+    // cross-check these indices, so a schema change that shifts them fails
+    // loudly here instead of silently testing the wrong operation.
+    const MESSAGE_GET: u32 = 21;
+    const UNREAD_COUNT: u32 = 2;
+
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("messages.lsdb");
+    let mut db = Db::open(&path).unwrap();
+    seed(&mut db);
+    let mut options = ServeOptions::new(CredentialsSource::Static(credentials()));
+    options.listen = Listen::tcp_local(0);
+    let server = store::Server::start(db, options).unwrap();
+    let addr = server.local_addr().expect("bound TCP address");
+    let client = store::Client::connect_tcp(addr, self::options()).unwrap();
+
+    let typed: Vec<Message> = [1, 2, 3]
+        .into_iter()
+        .map(|id| client.get::<Message>(id).unwrap().unwrap())
+        .collect();
+    let typed_count = client.unread_count(7).unwrap();
+
+    let requests: Vec<(u32, Vec<Value>)> = [1, 2, 3]
+        .into_iter()
+        .map(|id| (MESSAGE_GET, vec![Value::I64(id)]))
+        .chain(std::iter::once((UNREAD_COUNT, vec![Value::I64(7)])))
+        .collect();
+    let responses = client.pipeline_raw(&requests).unwrap();
+    assert_eq!(responses.len(), 4);
+    for (response, expected) in responses.iter().take(3).zip(typed.iter()) {
+        let values = response.as_ref().unwrap();
+        assert!(matches!(values[0], Value::U8(1)));
+        let row = Message::from_values(values[1..].to_vec()).unwrap();
+        assert_eq!(row.id, expected.id);
+        assert_eq!(row.body, expected.body);
+    }
+    let count = match &responses[3] {
+        Ok(values) => lightshadedb::wire::as_i64(&values[0]).unwrap(),
+        Err(error) => panic!("pipelined count failed: {error}"),
+    };
+    assert_eq!(count, typed_count);
+
+    // An error in the middle must not desynchronize the stream: responses
+    // after it still decode against their own requests.
+    let mixed = client
+        .pipeline_raw(&[
+            (MESSAGE_GET, vec![Value::I64(1)]),
+            (u32::MAX, vec![]),
+            (MESSAGE_GET, vec![Value::I64(2)]),
+        ])
+        .unwrap();
+    assert_eq!(mixed.len(), 3);
+    assert!(mixed[0].is_ok());
+    assert!(mixed[1].is_err());
+    let row = Message::from_values(mixed[2].as_ref().unwrap()[1..].to_vec()).unwrap();
+    assert_eq!(row.id, 2);
+
+    client.close().unwrap();
+    server.join().unwrap();
+}

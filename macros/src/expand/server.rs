@@ -511,85 +511,86 @@ pub(crate) fn server_wrapper(
                     let (result, waited) = if __ls_is_op && __ls_table_opt.is_some() && !__ls_in_txn {
                         let __ls_table = __ls_table_opt.unwrap_or(0);
                         let __ls_table_guards = __ls_lock_tables(entry, &[__ls_table]);
-                        let (__ls_clone_result, __ls_base_rows) = {
-                            let __ls_read = match entry.db.read() {
-                                ::std::result::Result::Ok(__ls_r) => __ls_r,
+                        let __ls_commit_guard = __ls_lock_commit(entry);
+                        let __ls_outcome = {
+                            let mut __ls_db = match entry.db.write() {
+                                ::std::result::Result::Ok(__ls_w) => __ls_w,
                                 ::std::result::Result::Err(__ls_poisoned) => __ls_poisoned.into_inner(),
                             };
-                            let __ls_base = __ls_read.__ls_shard_row_count();
-                            match __ls_read.__ls_shard_clone() {
-                                ::std::result::Result::Ok(__ls_c) => (::std::result::Result::Ok(__ls_c), __ls_base),
+                            let __ls_before = __ls_db.__ls_current_lsn();
+                            match __ls_server_dispatch_write(&mut __ls_db, index, &params) {
                                 ::std::result::Result::Err(__ls_e) => {
-                                    drop(__ls_read);
-                                    (::std::result::Result::Err(__ls_e), __ls_base)
-                                }
-                            }
-                        };
-                        match __ls_clone_result {
-                            ::std::result::Result::Err(__ls_e) => {
-                                drop(__ls_table_guards);
-                                (::std::result::Result::Err(__ls_e), ::std::option::Option::None)
-                            }
-                            ::std::result::Result::Ok(mut __ls_work) => {
-                                match __ls_server_dispatch_write(&mut __ls_work, index, &params) {
-                                    ::std::result::Result::Err(__ls_e) => {
-                                        drop(__ls_table_guards);
-                                        (::std::result::Result::Err(__ls_e), ::std::option::Option::None)
+                                    if __ls_db.__ls_reload().is_err() {
+                                        eprintln!("database entered a failed state: reload failed; server exiting");
+                                        std::process::exit(1);
                                     }
-                                    ::std::result::Result::Ok(__ls_values) => {
-                                        match __ls_work.__ls_shard_take() {
-                                            ::std::result::Result::Err(__ls_e) => {
+                                    if let ::std::option::Option::Some(__ls_msg) = __ls_db.__ls_shard_broken() {
+                                        eprintln!("database entered a failed state: {__ls_msg}; server exiting");
+                                        std::process::exit(1);
+                                    }
+                                    drop(__ls_db);
+                                    drop(__ls_commit_guard);
+                                    drop(__ls_table_guards);
+                                    (::std::result::Result::Err(__ls_e), ::std::option::Option::None)
+                                }
+                                ::std::result::Result::Ok(__ls_values) => {
+                                    match __ls_db.__ls_shard_take() {
+                                        ::std::result::Result::Err(__ls_e) => {
+                                            drop(__ls_db);
+                                            drop(__ls_commit_guard);
+                                            drop(__ls_table_guards);
+                                            (::std::result::Result::Err(__ls_e), ::std::option::Option::None)
+                                        }
+                                        ::std::result::Result::Ok(__ls_eff) => {
+                                            if __ls_eff.is_empty() {
+                                                drop(__ls_db);
+                                                drop(__ls_commit_guard);
                                                 drop(__ls_table_guards);
-                                                (::std::result::Result::Err(__ls_e), ::std::option::Option::None)
-                                            }
-                                            ::std::result::Result::Ok(__ls_eff) => {
-                                                if __ls_eff.is_empty() {
-                                                    drop(__ls_table_guards);
-                                                    (::std::result::Result::Ok(__ls_values), ::std::option::Option::None)
-                                                } else {
-                                                    let __ls_commit_guard = __ls_lock_commit(entry);
-                                                    let __ls_merged = {
-                                                        let mut __ls_write = match entry.db.write() {
-                                                            ::std::result::Result::Ok(__ls_w) => __ls_w,
-                                                            ::std::result::Result::Err(__ls_poisoned) => __ls_poisoned.into_inner(),
-                                                        };
-                                                        let __ls_rows = __ls_write.__ls_shard_row_count().saturating_add(__ls_work.__ls_shard_row_count()).saturating_sub(__ls_base_rows);
-                                                        let __ls_outcome = if let ::std::result::Result::Err(__ls_e) = __ls_write.__ls_shard_check_row_limit(__ls_rows) {
-                                                            ::std::result::Result::Err(__ls_e)
-                                                        } else {
-                                                            match __ls_write.__ls_shard_commit(&__ls_eff) {
-                                                                ::std::result::Result::Ok(()) => {
-                                                                    if let ::std::option::Option::Some(__ls_msg) = __ls_write.__ls_shard_broken() {
-                                                                        eprintln!("database entered a failed state: {__ls_msg}; server exiting");
-                                                                        std::process::exit(1);
-                                                                    }
-                                                                    ::std::result::Result::Ok(__ls_write.__ls_shard_lsn())
-                                                                }
-                                                                ::std::result::Result::Err(__ls_e) => {
-                                                                    if let ::std::option::Option::Some(__ls_msg) = __ls_write.__ls_shard_broken() {
-                                                                        eprintln!("database entered a failed state: {__ls_msg}; server exiting");
-                                                                        std::process::exit(1);
-                                                                    }
-                                                                    ::std::result::Result::Err(__ls_e)
-                                                                }
-                                                            }
-                                                        };
-                                                        drop(__ls_write);
-                                                        drop(__ls_commit_guard);
-                                                        drop(__ls_table_guards);
-                                                        __ls_outcome
-                                                    };
-                                                    match __ls_merged {
-                                                        ::std::result::Result::Ok(__ls_lsn) => (::std::result::Result::Ok(__ls_values), ::std::option::Option::Some(__ls_lsn)),
-                                                        ::std::result::Result::Err(__ls_e) => (::std::result::Result::Err(__ls_e), ::std::option::Option::None),
+                                                (::std::result::Result::Ok(__ls_values), ::std::option::Option::None)
+                                            } else {
+                                                let __ls_rows = __ls_db.__ls_shard_row_count();
+                                                let __ls_outcome = if let ::std::result::Result::Err(__ls_e) = __ls_db.__ls_shard_check_row_limit(__ls_rows) {
+                                                    if __ls_db.__ls_reload().is_err() {
+                                                        eprintln!("database entered a failed state: reload failed; server exiting");
+                                                        std::process::exit(1);
                                                     }
+                                                    ::std::result::Result::Err(__ls_e)
+                                                } else {
+                                                    match __ls_db.__ls_commit_wal(&__ls_eff) {
+                                                        ::std::result::Result::Ok(__ls_lsn) => {
+                                                            if let ::std::option::Option::Some(__ls_msg) = __ls_db.__ls_shard_broken() {
+                                                                eprintln!("database entered a failed state: {__ls_msg}; server exiting");
+                                                                std::process::exit(1);
+                                                            }
+                                                            ::std::result::Result::Ok(__ls_lsn)
+                                                        }
+                                                        ::std::result::Result::Err(__ls_e) => {
+                                                            if let ::std::option::Option::Some(__ls_msg) = __ls_db.__ls_shard_broken() {
+                                                                eprintln!("database entered a failed state: {__ls_msg}; server exiting");
+                                                                std::process::exit(1);
+                                                            }
+                                                            if __ls_db.__ls_reload().is_err() {
+                                                                eprintln!("database entered a failed state: reload failed; server exiting");
+                                                                std::process::exit(1);
+                                                            }
+                                                            ::std::result::Result::Err(__ls_e)
+                                                        }
+                                                    }
+                                                };
+                                                drop(__ls_db);
+                                                drop(__ls_commit_guard);
+                                                drop(__ls_table_guards);
+                                                match __ls_outcome {
+                                                    ::std::result::Result::Ok(__ls_lsn) => (::std::result::Result::Ok(__ls_values), (__ls_lsn > __ls_before).then_some(__ls_lsn)),
+                                                    ::std::result::Result::Err(__ls_e) => (::std::result::Result::Err(__ls_e), ::std::option::Option::None),
                                                 }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
+                        };
+                        __ls_outcome
                     } else {
                         let __ls_all_guards = __ls_lock_all(entry);
                         let __ls_commit_guard = __ls_lock_commit(entry);

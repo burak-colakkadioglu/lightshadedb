@@ -625,6 +625,35 @@ pub(crate) fn client_wrapper(
                 )
             }
 
+            pub fn pipeline_raw(
+                &self,
+                requests: &[(u32, ::std::vec::Vec<::lightshadedb::table::Value>)],
+            ) -> ::lightshadedb::Result<
+                ::std::vec::Vec<
+                    ::std::result::Result<
+                        ::std::vec::Vec<::lightshadedb::table::Value>,
+                        ::lightshadedb::Error,
+                    >,
+                >,
+            > {
+                let mut inner = self.inner.borrow_mut();
+                let encoded: ::std::vec::Vec<(
+                    ::lightshadedb::wire::RequestKind,
+                    u32,
+                    ::std::vec::Vec<::lightshadedb::table::Value>,
+                )> = requests
+                    .iter()
+                    .map(|(index, params)| {
+                        (
+                            ::lightshadedb::wire::RequestKind::Operation,
+                            *index,
+                            params.clone(),
+                        )
+                    })
+                    .collect();
+                ::lightshadedb::wire::pipeline(&mut inner.stream, &encoded)
+            }
+
             pub fn begin(&mut self) -> ::lightshadedb::Result<()> {
                 let mut inner = self.inner.borrow_mut();
                 ::lightshadedb::wire::request(

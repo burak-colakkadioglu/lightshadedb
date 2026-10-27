@@ -556,6 +556,21 @@ pub fn request(
     decode_response(&response)
 }
 
+pub fn pipeline(
+    stream: &mut Stream,
+    requests: &[(RequestKind, u32, Vec<Value>)],
+) -> Result<Vec<Result<Vec<Value>, Error>>> {
+    for (kind, index, params) in requests {
+        write_frame(stream, &encode_request(*kind, *index, params))?;
+    }
+    let mut out = Vec::with_capacity(requests.len());
+    for _ in 0..requests.len() {
+        let frame = read_frame(stream)?;
+        out.push(decode_response(&frame));
+    }
+    Ok(out)
+}
+
 pub fn read_request(stream: &mut Stream) -> Result<(RequestKind, u32, Vec<Value>)> {
     let frame = read_frame(stream)?;
     let mut input = std::io::Cursor::new(frame.as_slice());
