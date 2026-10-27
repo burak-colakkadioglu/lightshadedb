@@ -11,7 +11,7 @@ on:
         description: Engines to run
         default: all
         type: choice
-        options: [all, lightshade, lightshade-client, lightshade-client-x16, redb, sqlite, postgres]
+        options: [all, lightshade, lightshade-client, lightshade-client-x16, redb, sqlite, postgres, fjall, heed, libsql, valkey, mysql, cockroachdb]
       threads:
         description: Client threads for lightshade-client-x16
         default: "16"
@@ -34,7 +34,7 @@ jobs:
       - id: set
         run: |
           if [ "${{ inputs.engines }}" = "all" ]; then
-            echo 'engines=["lightshade", "lightshade-client", "lightshade-client-x16", "redb", "sqlite", "postgres"]' >> "$GITHUB_OUTPUT"
+            echo 'engines=["lightshade", "lightshade-client", "lightshade-client-x16", "redb", "sqlite", "postgres", "fjall", "heed", "libsql", "valkey", "mysql", "cockroachdb"]' >> "$GITHUB_OUTPUT"
           else
             echo 'engines=["${{ inputs.engines }}"]' >> "$GITHUB_OUTPUT"
           fi
@@ -58,6 +58,29 @@ jobs:
       matrix:
         os: ${{ fromJSON(needs.setup.outputs.oses) }}
         engine: ${{ fromJSON(needs.setup.outputs.engines) }}
+        exclude:
+          # valkey and mysql only run on Linux (no Windows/macOS provisioning)
+          - os: windows-latest
+            engine: valkey
+          - os: windows-latest
+            engine: mysql
+          - os: macos-latest
+            engine: valkey
+          - os: macos-latest
+            engine: mysql
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: bench
+          MYSQL_DATABASE: benchdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pbench"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
     steps:
       - uses: actions/checkout@v4
       - name: Cache PostgreSQL binaries
@@ -66,6 +89,45 @@ jobs:
           path: ~/.theseus/postgresql
           key: pgbin-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: pgbin-${{ matrix.os }}-
+      - name: Start Valkey
+        if: ${{ (inputs.engines == 'all' || inputs.engines == 'valkey') && matrix.os == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q valkey
+          valkey-server --port 7779 --daemonize yes --save '' --appendonly no
+      - name: Cache CockroachDB binary
+        id: crdb-cache
+        if: ${{ inputs.engines == 'all' || inputs.engines == 'cockroachdb' }}
+        uses: actions/cache@v4
+        with:
+          path: crdb-bin
+          key: crdb-v25.2.1-${{ matrix.os }}
+      - name: Download CockroachDB
+        if: ${{ (inputs.engines == 'all' || inputs.engines == 'cockroachdb') && steps.crdb-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          mkdir -p crdb-bin
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            curl -sL -o crdb.zip https://binaries.cockroachdb.com/cockroach-v25.2.1.windows-6.2-amd64.zip
+            unzip -q -o crdb.zip -d crdb-dl
+            cp crdb-dl/cockroach-v25.2.1.windows-6.2-amd64/cockroach.exe crdb-bin/
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            curl -sL -o crdb.tgz https://binaries.cockroachdb.com/cockroach-v25.2.1.darwin-10.9-arm64.tgz
+            tar xzf crdb.tgz -C crdb-dl 2>/dev/null || (mkdir -p crdb-dl && tar xzf crdb.tgz -C crdb-dl)
+            cp crdb-dl/cockroach-v25.2.1.darwin-10.9-arm64/cockroach crdb-bin/
+          else
+            curl -sL -o crdb.tgz https://binaries.cockroachdb.com/cockroach-v25.2.1.linux-amd64.tgz
+            mkdir -p crdb-dl && tar xzf crdb.tgz -C crdb-dl
+            cp crdb-dl/cockroach-v25.2.1.linux-amd64/cockroach crdb-bin/
+          fi
+      - name: Start CockroachDB
+        if: ${{ inputs.engines == 'all' || inputs.engines == 'cockroachdb' }}
+        shell: bash
+        run: |
+          BIN=crdb-bin/cockroach
+          [ "${{ matrix.os }}" = "windows-latest" ] && BIN=crdb-bin/cockroach.exe
+          chmod +x "$BIN" 2>/dev/null || true
+          mkdir -p cr-store
+          "$BIN" start-single-node --insecure --listen-addr=127.0.0.1:26257 --store=cr-store --background
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.0
@@ -76,6 +138,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LS_BENCH_THREADS: ${{ inputs.threads }}
+          COCKROACH_STORE: cr-store
         run: |
           BIN=target/release/ls-bench
           OUT="results-${{ matrix.os }}-${{ matrix.engine }}.json"
@@ -117,17 +180,23 @@ jobs:
               (json.load(open(f)) for f in glob.glob("results/*.json")),
               key=lambda d: (d["os"], d["engine"]),
           )
-          engines = ["lightshade", "lightshade-client", "lightshade-client-x16", "redb", "sqlite", "postgres"]
+          engines = ["lightshade", "lightshade-client", "lightshade-client-x16", "redb", "sqlite", "postgres", "fjall", "heed", "libsql", "valkey", "mysql", "cockroachdb"]
           present = sorted({d["engine"] for d in rows if d["engine"] in engines},
                            key=engines.index)
-          workloads = ["insert", "get", "scan", "count", "batch"]
+          workloads = ["insert", "get", "scan", "count", "batch", "churn"]
           notes = {
               "lightshade": "defaults (8 MiB checkpoints, 1 ms group commit); planner index on (inbox_id, is_read, sent_at)",
               "lightshade-client": "same engine over TCP localhost (sequential; RTT-bound)",
-          "lightshade-client-x16": "16 sharded blocking clients over TCP localhost (server parallelizes reads under RwLock, applies writes serially, group-commits WAL fsyncs across connections; measures connection scaling)",
+              "lightshade-client-x16": "16 sharded blocking clients over TCP localhost (server parallelizes reads under RwLock, applies writes serially, group-commits WAL fsyncs across connections; measures connection scaling)",
               "redb": "one write txn per insert; no secondary index (full scan + sort in harness)",
               "sqlite": "autocommit per op, stock journal mode/synchronous; index on (inbox_id, is_read, sent_at DESC)",
               "postgres": "autocommit per op over TCP localhost; stock settings; index on (inbox_id, is_read, sent_at DESC)",
+              "fjall": "pure-Rust LSM; 64 MiB block cache; no secondary index (full scan + sort in harness); WAL syncs in background batches, not per op",
+              "heed": "LMDB via memory-mapped file (2 GiB map); one write txn per insert; no secondary index (full scan in harness)",
+              "libsql": "local file database over async runtime; same DDL as sqlite; VACUUM for reclaim",
+              "valkey": "in-process protocol over TCP localhost; string keys msg:{id}; full KEYS scan in harness; storage is resident dataset bytes (INFO), not disk files",
+              "mysql": "MySQL 8 service, autocommit per op; index on (inbox_id, is_read, sent_at DESC)",
+              "cockroachdb": "single-node cluster over postgres wire protocol; storage measured as store-dir delta (LSM flush timing makes small runs approximate)",
           }
           versions = {
               "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
@@ -165,8 +234,8 @@ jobs:
               for w in workloads:
                   cells = []
                   for e in present_os:
-                      p = by_engine[e]["phases"][w]
-                      cells.append(f"{p['ops_s']:,.0f} ops/s")
+                      p = by_engine[e]["phases"].get(w)
+                      cells.append(f"{p['ops_s']:,.0f} ops/s" if p else "n/a")
                   L.append(f"| {w} | " + " | ".join(cells) + " |")
               L.append("")
               L.append("| workload | " + " | ".join(present_os) + " |")
@@ -174,8 +243,8 @@ jobs:
               for w in workloads:
                   cells = []
                   for e in present_os:
-                      p = by_engine[e]["phases"][w]
-                      cells.append(f"{p['p50_us']:,.1f} / {p['p99_us']:,.1f} us")
+                      p = by_engine[e]["phases"].get(w)
+                      cells.append(f"{p['p50_us']:,.1f} / {p['p99_us']:,.1f} us" if p else "n/a")
                   L.append(f"| {w} p50 / p99 | " + " | ".join(cells) + " |")
               L.append("")
               L.append("| engine | peak RSS (MiB) | peak cpu % |")
@@ -183,6 +252,26 @@ jobs:
               for e in present_os:
                   d = by_engine[e]
                   L.append(f"| {e} | {d['peak_rss_mb']:.1f} | {d['cpu_pct']:.1f} |")
+              stored = [(e, by_engine[e].get("storage")) for e in present_os]
+              stored = [(e, s) for e, s in stored if isinstance(s, dict)]
+              if stored:
+                  logical = stored[0][1]["logical_bytes"]
+                  L.append("")
+                  L.append(f"| storage ({rows[0]['rows']} mixed rows, logical {logical / 1024 / 1024:.1f} MiB) | bytes/row | amplification | after-reclaim bytes/row |")
+                  L.append("|---|---|---|---|")
+                  for e, s in stored:
+                      per_row = s["disk_bytes"] / s["rows"] if s["rows"] else 0
+                      amp = s["disk_bytes"] / s["logical_bytes"] if s["logical_bytes"] else 0
+                      reclaimed = s["compacted_bytes"] / s["rows"] if s["rows"] else 0
+                      L.append(f"| {e} | {per_row:,.0f} | {amp:.2f}x | {reclaimed:,.0f} |")
+              reopened = [(e, by_engine[e].get("reopen")) for e in present_os]
+              reopened = [(e, r) for e, r in reopened if isinstance(r, dict)]
+              if reopened:
+                  L.append("")
+                  L.append("| reopen | open ms | cold point-get us |")
+                  L.append("|---|---|---|")
+                  for e, r in reopened:
+                      L.append(f"| {e} | {r['open_ms']:.1f} | {r['cold_get_us']:.1f} |")
           report = "\n".join(L) + "\n"
           open("report.md", "w").write(report)
           open(out, "a").write(report + "\n")
