@@ -5,6 +5,7 @@ pub struct OpenOptions {
     pub read_only: bool,
     pub create: bool,
     pub migrate: bool,
+    pub relaxed: bool,
     pub checkpoint_bytes: u64,
     pub row_cache_bytes: u64,
     pub max_rows: u64,
@@ -17,6 +18,7 @@ impl Default for OpenOptions {
             read_only: false,
             create: true,
             migrate: false,
+            relaxed: false,
             checkpoint_bytes: 8 * 1024 * 1024,
             row_cache_bytes: 64 * 1024 * 1024,
             max_rows: 0,
@@ -33,6 +35,9 @@ impl OpenOptions {
         }
         if let Some(value) = env_u64("LIGHTSHADE_ROW_CACHE_BYTES")? {
             options.row_cache_bytes = value;
+        }
+        if let Some(value) = env_bool("LIGHTSHADE_RELAXED")? {
+            options.relaxed = value;
         }
         if let Some(value) = env_u64("LIGHTSHADE_MAX_ROWS")? {
             options.max_rows = value;

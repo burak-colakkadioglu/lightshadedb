@@ -216,6 +216,7 @@ impl<K: Ord + Clone> __LsSlots<K> {
         let packed = if length <= __LS_SLOT_LEN_MASK && offset < __LS_SLOT_OFFSET_LIMIT {
             let packed = __ls_slot_pack(offset, length);
             if packed != __LS_SLOT_LARGE && packed != __LS_SLOT_DELETED {
+                self.large.remove(&key);
                 packed
             } else {
                 self.large.insert(key.clone(), (offset, length));
@@ -2344,7 +2345,9 @@ impl Db {
         let replayed = max_lsn > snapshot_lsn;
         db.__ls_lsn = max_lsn;
         wal.set_len(valid_length)?;
-        __ls_wal_grow(&wal, valid_length)?;
+        if valid_length > 0 {
+            __ls_wal_grow(&wal, valid_length)?;
+        }
         wal.seek(SeekFrom::Start(valid_length))?;
         db.__ls_store = Some(__LsStore {
             path: path.to_path_buf(),
@@ -2366,7 +2369,7 @@ impl Db {
             checkpoint_at: __ls_checkpoint_threshold(),
             _lock: lock,
         });
-        if replayed {
+        if replayed && valid_length >= __ls_checkpoint_threshold() {
             db.checkpoint()?;
         }
         Ok(db)
@@ -2647,6 +2650,9 @@ impl Db {
         }
         self.__ls_in_transaction = true;
         self.__ls_effects.clear();
+        if self.__ls_effects.capacity() < 4096 {
+            self.__ls_effects.reserve(4096 - self.__ls_effects.capacity());
+        }
         Ok(())
     }
 
@@ -2904,6 +2910,7 @@ impl Db {
         }
         fs::rename(&temporary, &path)?;
         __ls_sync_parent(&path)?;
+        let _ = self.__ls_vacuum_spill();
         let sync = std::sync::Arc::clone(&self.__ls_store.as_ref().unwrap().sync);
         {
             let mut guard = sync.mutex.lock().map_err(|_| __ls_wal_poisoned())?;
@@ -2926,20 +2933,14 @@ impl Db {
         if self.__ls_in_transaction {
             return;
         }
-        let threshold = match self.__ls_store.as_ref() {
-            Some(store) => store.checkpoint_at,
+        let (threshold, sync) = match self.__ls_store.as_ref() {
+            Some(store) => (store.checkpoint_at, std::sync::Arc::clone(&store.sync)),
             None => return,
         };
         if threshold == u64::MAX {
             return;
         }
-        let current = match self.__ls_store.as_ref() {
-            Some(store) => {
-                let sync = std::sync::Arc::clone(&store.sync);
-                sync.mutex.lock().map(|guard| guard.bytes).unwrap_or(0)
-            }
-            None => return,
-        };
+        let current = sync.mutex.lock().map(|guard| guard.bytes).unwrap_or(0);
         if current < threshold {
             return;
         }

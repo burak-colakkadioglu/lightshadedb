@@ -491,6 +491,74 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "    }}").unwrap();
         writeln!(out).unwrap();
 
+        writeln!(out, "    fn __ls_vacuum(&mut self) -> io::Result<()> {{").unwrap();
+        writeln!(out, "        if self.direct {{ return Ok(()); }}").unwrap();
+        writeln!(out, "        self.__ls_staging_flush()?;").unwrap();
+        writeln!(
+            out,
+            "        if self.slots.len() == 0 && self.overflow.is_empty() {{"
+        )
+        .unwrap();
+        writeln!(out, "            if let Ok(spill) = self.spill.read() {{").unwrap();
+        writeln!(
+            out,
+            "                if let Some(file) = spill.as_ref() {{ let _ = file.set_len(0); }}"
+        )
+        .unwrap();
+        writeln!(out, "            }}").unwrap();
+        writeln!(
+            out,
+            "            self.spill_len.store(0, std::sync::atomic::Ordering::Relaxed);"
+        )
+        .unwrap();
+        writeln!(out, "            if let Ok(mut staging) = self.staging.write() {{ staging.base = 0; staging.buf.clear(); }}").unwrap();
+        writeln!(out, "            return Ok(());").unwrap();
+        writeln!(out, "        }}").unwrap();
+        writeln!(
+            out,
+            "        let mut __ls_live: Vec<({storage_key}, Vec<u8>)> = Vec::new();"
+        )
+        .unwrap();
+        writeln!(out, "        __ls_live.reserve(self.slots.len());").unwrap();
+        writeln!(
+            out,
+            "        for (__ls_key, __ls_packed) in self.slots.iter() {{"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "            let __ls_row = self.__ls_read_packed(&__ls_key, __ls_packed);"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "            __ls_live.push((__ls_key, Self::__ls_encode(&__ls_row)));"
+        )
+        .unwrap();
+        writeln!(out, "        }}").unwrap();
+        writeln!(out, "        let mut spill = self.spill.write().map_err(|_| io::Error::other(\"spill lock poisoned\"))?;").unwrap();
+        writeln!(out, "        let file = spill.as_mut().ok_or_else(|| io::Error::other(\"spill is closed\"))?;").unwrap();
+        writeln!(out, "        file.set_len(0)?;").unwrap();
+        writeln!(out, "        let mut __ls_offset = 0u64;").unwrap();
+        writeln!(out, "        for (__ls_key, __ls_bytes) in &__ls_live {{").unwrap();
+        writeln!(
+            out,
+            "            __ls_spill_write(file, __ls_offset, __ls_bytes)?;"
+        )
+        .unwrap();
+        writeln!(out, "            self.slots.insert(__ls_key.clone(), __ls_offset, __ls_bytes.len() as u64);").unwrap();
+        writeln!(out, "            __ls_offset += __ls_bytes.len() as u64;").unwrap();
+        writeln!(out, "        }}").unwrap();
+        writeln!(
+            out,
+            "        self.spill_len.store(__ls_offset, std::sync::atomic::Ordering::Relaxed);"
+        )
+        .unwrap();
+        writeln!(out, "        if let Ok(mut staging) = self.staging.write() {{ staging.base = __ls_offset; staging.buf.clear(); }}").unwrap();
+        writeln!(out, "        Ok(())").unwrap();
+        writeln!(out, "    }}").unwrap();
+        writeln!(out).unwrap();
+
         writeln!(
             out,
             "    fn __ls_append_loaded(&mut self, key: {key}, row: {row}) -> io::Result<()> {{"

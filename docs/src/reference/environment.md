@@ -16,6 +16,7 @@ units, so read the unit column, not your instincts.
 | `LIGHTSHADE_LOCK_TIMEOUT_MS` | engine default | how long a second writer waits for the lock |
 | `LIGHTSHADE_WAL_PREALLOC_BYTES` | 8 MiB | WAL preallocation segment in bytes; `0` disables preallocation |
 | `LIGHTSHADE_COMPRESSION` | off | `1`/`true`/`yes`/`on`/`rle`/`lz` compresses snapshot chunks and WAL records with the built-in codec |
+| `LIGHTSHADE_RELAXED` | off | `1`/`true`/`yes`/`on` buffers WAL writes without an fsync per commit; call `flush()` or `checkpoint()` for durability, or use `Db::open_relaxed` / `OpenOptions { relaxed: true }` |
 | `LIGHTSHADE_ENCRYPTION_KEY_FILE` | off | key file path for encryption at rest (32 raw bytes or 64 hex chars, `0600`, regular file) |
 
 ## Server

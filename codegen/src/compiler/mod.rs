@@ -261,6 +261,27 @@ fn generate_library_impl(workload: &Workload, options: &GenerateOptions) -> Resu
 
     emit_ttl(&mut out, workload)?;
 
+    writeln!(
+        out,
+        "    fn __ls_vacuum_spill(&mut self) -> io::Result<()> {{"
+    )
+    .unwrap();
+    let vacuum_tables: Vec<_> = workload
+        .tables
+        .iter()
+        .filter(|table| !workload.is_projection(&table.name))
+        .collect();
+    if vacuum_tables.is_empty() {
+        writeln!(out, "        Ok(())").unwrap();
+    } else {
+        for table in vacuum_tables {
+            writeln!(out, "        self.t_{}.__ls_vacuum()?;", table.name).unwrap();
+        }
+        writeln!(out, "        Ok(())").unwrap();
+    }
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+
     emit_transaction_support(&mut out, workload, &plan)?;
 
     for operation in &workload.operations {

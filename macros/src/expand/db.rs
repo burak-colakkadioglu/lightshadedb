@@ -105,7 +105,18 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                 if options.migrate {
                     return Self::open_migrated(path);
                 }
+                if options.relaxed {
+                    return Self::open_relaxed(path);
+                }
                 let inner = __ls_public(__lightshadedb::Db::open(path))?;
+                Ok(Self { inner, path: path.to_path_buf() })
+            }
+
+            pub fn open_relaxed(
+                path: impl ::std::convert::AsRef<::std::path::Path>,
+            ) -> ::lightshadedb::Result<Self> {
+                let path = path.as_ref();
+                let inner = __ls_public(__lightshadedb::Db::open_relaxed(path))?;
                 Ok(Self { inner, path: path.to_path_buf() })
             }
 

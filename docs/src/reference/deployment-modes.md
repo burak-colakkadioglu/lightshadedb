@@ -76,7 +76,7 @@ operations are generated per handle with the same names and types.
 
 | Struct | Key fields (defaults) |
 |---|---|
-| `OpenOptions` | `read_only: false`, `create: true`, `migrate: false`, `checkpoint_bytes: 8 MiB`, `row_cache_bytes: 64 MiB`, `max_rows/max_wal_bytes: 0` (unlimited); `from_env()` overlays `LIGHTSHADE_CHECKPOINT_BYTES` et al. |
+| `OpenOptions` | `read_only: false`, `create: true`, `migrate: false`, `relaxed: false`, `checkpoint_bytes: 8 MiB`, `row_cache_bytes: 64 MiB`, `max_rows/max_wal_bytes: 0` (unlimited); `from_env()` overlays `LIGHTSHADE_CHECKPOINT_BYTES` et al. plus `LIGHTSHADE_RELAXED`; `Db::open_relaxed` skips the fsync per commit, call `flush()` or `checkpoint()` for durability |
 | `RecoverOptions` | `discard_wal: bool`: reopen at the last checkpoint |
 | `ServeOptions` | timeouts, limits, group commit, reload interval above; `from_env()` reads `LIGHTSHADE_CREDENTIALS`, `_LISTEN`, `_NETWORK_ACCESS`, `_MAX_ROWS`, `_MAX_WAL_BYTES` and enables signal handling |
 | `ClientOptions` | credentials, 5 s / 30 s timeouts; `from_env()` delegates to `ClientCredentials::from_env()` |
