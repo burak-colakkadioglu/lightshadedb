@@ -15,8 +15,16 @@ DATABASE="$WORK/soak.lsdb"
 SOCKET="$WORK/soak.lsdb.sock"
 CREDENTIALS="$WORK/credentials"
 SECRET="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+SOAK_LOGS="${LIGHTSHADE_SOAK_LOGS:-$ROOT/soak-logs}"
 SERVER_PID=""
 CLIENTS=()
+
+archive_logs() {
+    mkdir -p "$SOAK_LOGS" 2>/dev/null || return 0
+    for log in server.log client.log audit.jsonl verify.log; do
+        [[ -e "$WORK/$log" ]] && cp "$WORK/$log" "$SOAK_LOGS/" 2>/dev/null || true
+    done
+}
 
 cleanup() {
     for pid in "${CLIENTS[@]}"; do
@@ -33,7 +41,15 @@ cleanup() {
         rm -rf "$WORK"
     fi
 }
-trap cleanup EXIT
+
+finish() {
+    local code=$?
+    if (( code != 0 )); then
+        archive_logs
+    fi
+    cleanup
+}
+trap finish EXIT
 
 if (( SECONDS_TO_RUN < 1 )); then
     echo "LIGHTSHADE_SOAK_SECONDS must be at least 1" >&2
@@ -72,8 +88,17 @@ LIGHTSHADE_AUDIT_LOG="$WORK/audit.jsonl" \
     "$INTERFACE" "$DATABASE" serve >"$WORK/server.log" 2>&1 &
 SERVER_PID=$!
 
+probe_ready() {
+    LIGHTSHADE_CREDENTIALS="$CREDENTIALS" \
+    LIGHTSHADE_CREDENTIAL_ID=reader \
+    LIGHTSHADE_CREDENTIAL_SECRET="$SECRET" \
+        "$INTERFACE" "$SOCKET" run unread_count inbox=0 >/dev/null 2>&1
+}
+
 for _ in $(seq 1 600); do
-    [[ -S "$SOCKET" ]] && break
+    if probe_ready; then
+        break
+    fi
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
         echo "soak server exited before opening its socket" >&2
         cat "$WORK/server.log" >&2
@@ -81,8 +106,9 @@ for _ in $(seq 1 600); do
     fi
     sleep 0.05
 done
-if [[ ! -S "$SOCKET" ]]; then
+if ! probe_ready; then
     echo "soak server did not open its socket" >&2
+    cat "$WORK/server.log" >&2 || true
     exit 1
 fi
 
