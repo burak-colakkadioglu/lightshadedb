@@ -138,8 +138,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LS_BENCH_THREADS: ${{ inputs.threads }}
-          COCKROACH_STORE: cr-store
         run: |
+          if [ "${{ matrix.engine }}" = "cockroachdb" ]; then
+            export COCKROACH_STORE=cr-store
+          fi
           BIN=target/release/ls-bench
           OUT="results-${{ matrix.os }}-${{ matrix.engine }}.json"
           "$BIN" --engine "${{ matrix.engine }}" --rows "${{ inputs.rows }}" --out "$OUT"
@@ -191,7 +193,7 @@ jobs:
               "redb": "one write txn per insert; no secondary index (full scan + sort in harness)",
               "sqlite": "autocommit per op, stock journal mode/synchronous; index on (inbox_id, is_read, sent_at DESC)",
               "postgres": "autocommit per op over TCP localhost; stock settings; index on (inbox_id, is_read, sent_at DESC)",
-              "fjall": "pure-Rust LSM; 64 MiB block cache; no secondary index (full scan + sort in harness); WAL syncs in background batches, not per op",
+              "fjall": "pure-Rust LSM; 64 MiB block cache; no secondary index (full scan + sort in harness); journal flushed to OS per write, fsynced only on persist (weaker per-op durability than the fsync-per-op engines)",
               "heed": "LMDB via memory-mapped file (2 GiB map); one write txn per insert; no secondary index (full scan in harness)",
               "libsql": "local file database over async runtime; same DDL as sqlite; VACUUM for reclaim",
               "valkey": "in-process protocol over TCP localhost; string keys msg:{id}; full KEYS scan in harness; storage is resident dataset bytes (INFO), not disk files",

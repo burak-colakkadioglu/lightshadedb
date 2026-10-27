@@ -1004,17 +1004,8 @@ fn run_pg_phases(
     client.batch_execute(
         "DROP TABLE IF EXISTS messages_storage;
          CREATE TABLE messages_storage (id BIGINT PRIMARY KEY, inbox_id BIGINT NOT NULL, sent_at BIGINT NOT NULL, is_read BOOLEAN NOT NULL, body TEXT NOT NULL);
-         CREATE INDEX IF NOT EXISTS idx_messages_storage_inbox ON messages_storage (inbox_id, is_read, sent_at DESC);",
+         CREATE INDEX idx_messages_storage_inbox ON messages_storage (inbox_id, is_read, sent_at DESC);",
     )?;
-    for id in 1..=rows {
-        let body = storage_body(id, rows);
-        logical += logical_row_bytes(body.len());
-        let id = id as i64;
-        client.execute(
-            "INSERT INTO messages_storage (id, inbox_id, sent_at, is_read, body) VALUES ($1, $2, $3, $4, $5)",
-            &[&id, &(id % 16), &id, &(id % 3 == 0), &body],
-        )?;
-    }
     // CockroachDB exposes no pg_total_relation_size equivalent, so when the
     // workflow points COCKROACH_STORE at the server's store directory we
     // measure the attributable bytes as a delta over a pre-load baseline.
@@ -1024,34 +1015,35 @@ fn run_pg_phases(
     let store_base = store_dir
         .as_deref()
         .map(|path| dir_size(std::path::Path::new(path)));
-    let disk = match store_base {
-        Some(base) => {
-            let path = std::path::Path::new(store_dir.as_deref().unwrap_or(""));
-            dir_size(path).saturating_sub(base)
-        }
-        None => {
-            let bytes: i64 = client
-                .query_one("SELECT pg_total_relation_size('messages_storage')", &[])?
-                .get(0);
-            bytes.max(0) as u64
+    let measure_bytes = |client: &mut postgres::Client| -> Result<u64, Box<dyn std::error::Error>> {
+        match store_base {
+            Some(base) => {
+                let path = std::path::Path::new(store_dir.as_deref().unwrap_or(""));
+                Ok(dir_size(path).saturating_sub(base))
+            }
+            None => {
+                let bytes: i64 = client
+                    .query_one("SELECT pg_total_relation_size('messages_storage')", &[])?
+                    .get(0);
+                Ok(bytes.max(0) as u64)
+            }
         }
     };
+    for id in 1..=rows {
+        let body = storage_body(id, rows);
+        logical += logical_row_bytes(body.len());
+        let id = id as i64;
+        client.execute(
+            "INSERT INTO messages_storage (id, inbox_id, sent_at, is_read, body) VALUES ($1, $2, $3, $4, $5)",
+            &[&id, &(id % 16), &id, &(id % 3 == 0), &body],
+        )?;
+    }
+    let disk = measure_bytes(&mut *client)?;
     client.execute("DELETE FROM messages_storage WHERE id % 2 = 0", &[])?;
     if vacuum_full {
         client.batch_execute("VACUUM FULL messages_storage")?;
     }
-    let compacted = match store_base {
-        Some(base) => {
-            let path = std::path::Path::new(store_dir.as_deref().unwrap_or(""));
-            dir_size(path).saturating_sub(base)
-        }
-        None => {
-            let bytes: i64 = client
-                .query_one("SELECT pg_total_relation_size('messages_storage')", &[])?
-                .get(0);
-            bytes.max(0) as u64
-        }
-    };
+    let compacted = measure_bytes(&mut *client)?;
     client.batch_execute("DROP TABLE messages_storage")?;
     sample.observe();
     let storage = StorageReport {
@@ -2244,12 +2236,18 @@ fn run_valkey(
     let mut start = rows + 1;
     while start <= 2 * rows {
         let end = (start + BATCH_ROWS - 1).min(2 * rows);
-        let t = Instant::now();
+        let mut rows_batch: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
         for id in start..=end {
             let id = id as i64;
             let value = encode_row(id % 16, id, id % 3 == 0, &row_body(id as usize));
-            let _: () = con.set(valkey_key(id), value)?;
+            rows_batch.push((valkey_key(id).into_bytes(), value));
         }
+        let t = Instant::now();
+        let mut pipe = redis::pipe();
+        for (key, value) in &rows_batch {
+            pipe.set(&key[..], &value[..]).ignore();
+        }
+        let _: () = pipe.query(&mut con)?;
         batch.nanos.push(t.elapsed().as_nanos() as u64);
         batch.ops += 1;
         start = end + 1;
@@ -2421,17 +2419,23 @@ fn run_mysql(rows: usize, sample: &mut Sample) -> Result<EngineOutput, Box<dyn s
     let mut start = rows + 1;
     while start <= 2 * rows {
         let end = (start + BATCH_ROWS - 1).min(2 * rows);
-        let t = Instant::now();
-        let mut txn = conn.start_transaction(mysql::TxOpts::default())?;
+        let mut placeholders = Vec::new();
+        let mut params: Vec<mysql::Value> = Vec::new();
         for id in start..=end {
             let id = id as i64;
-            let body = row_body(id as usize);
-            txn.exec_drop(
-                "INSERT INTO messages (id, inbox_id, sent_at, is_read, body) VALUES (?,?,?,?,?)",
-                (id, id % 16, id, id % 3 == 0, body),
-            )?;
+            placeholders.push("(?,?,?,?,?)");
+            params.push(id.into());
+            params.push((id % 16).into());
+            params.push(id.into());
+            params.push((id % 3 == 0).into());
+            params.push(row_body(id as usize).into());
         }
-        txn.commit()?;
+        let query = format!(
+            "INSERT INTO messages (id, inbox_id, sent_at, is_read, body) VALUES {}",
+            placeholders.join(",")
+        );
+        let t = Instant::now();
+        conn.exec_drop(&query[..], mysql::Params::Positional(params))?;
         batch.nanos.push(t.elapsed().as_nanos() as u64);
         batch.ops += 1;
         start = end + 1;
@@ -2486,6 +2490,9 @@ fn run_mysql(rows: usize, sample: &mut Sample) -> Result<EngineOutput, Box<dyn s
             (id, id % 16, id, id % 3 == 0, body),
         )?;
     }
+    // information_schema table statistics are cached and can lag a bulk
+    // load, so force a recalculation before each measurement.
+    conn.query_drop("ANALYZE TABLE messages_storage")?;
     let disk: Option<i64> = conn.query_first(
         "SELECT SUM(data_length + index_length) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'messages_storage'",
     )?;
@@ -2494,6 +2501,7 @@ fn run_mysql(rows: usize, sample: &mut Sample) -> Result<EngineOutput, Box<dyn s
     let _: () = conn
         .query_drop("OPTIMIZE TABLE messages_storage")
         .unwrap_or(());
+    conn.query_drop("ANALYZE TABLE messages_storage")?;
     let compacted: Option<i64> = conn.query_first(
         "SELECT SUM(data_length + index_length) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'messages_storage'",
     )?;
