@@ -175,6 +175,10 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
                 __ls_public(self.inner.checkpoint())
             }
 
+            pub fn purge_expired(&mut self) -> ::lightshadedb::Result<u64> {
+                __ls_public(self.inner.purge_expired())
+            }
+
             pub fn verify(
                 path: impl ::std::convert::AsRef<::std::path::Path>,
                 options: ::lightshadedb::admin::VerifyOptions,
@@ -313,12 +317,72 @@ pub(crate) fn db_wrapper(schema: &Schema, lowered: &LoweredSchema) -> TokenStrea
             }
 
             #[cfg(feature = "host")]
+            fn __ls_wal_valid_len(&self) -> u64 {
+                self.inner.__ls_wal_valid_len()
+            }
+
+            #[cfg(feature = "host")]
             fn __ls_wal_sync_handle(
                 &self,
             ) -> ::std::option::Option<
                 ::std::sync::Arc<__lightshadedb::__LsWalSync>,
             > {
                 self.inner.__ls_wal_sync_handle()
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_clone(&self) -> ::lightshadedb::Result<Db> {
+                let inner = __ls_public(self.inner.__ls_shard_clone())?;
+                ::std::result::Result::Ok(Self { inner, path: self.path.clone() })
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_take(&mut self) -> ::lightshadedb::Result<::std::vec::Vec<u8>> {
+                __ls_public(self.inner.__ls_shard_take())
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_commit(&mut self, effects: &[u8]) -> ::lightshadedb::Result<()> {
+                __ls_public(self.inner.__ls_shard_commit(effects))
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_row_count(&self) -> u64 {
+                self.inner.__ls_shard_row_count()
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_check_row_limit(&self, rows: u64) -> ::lightshadedb::Result<()> {
+                __ls_public(self.inner.__ls_shard_check_row_limit(rows))
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_broken(&self) -> ::std::option::Option<::std::string::String> {
+                self.inner.__ls_shard_broken()
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_lsn(&self) -> u64 {
+                self.inner.__ls_shard_lsn()
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_versions(&self) -> ::std::vec::Vec<u64> {
+                self.inner.__ls_shard_versions()
+            }
+
+            #[cfg(feature = "host")]
+            #[doc(hidden)]
+            pub fn __ls_shard_bump(&mut self, tables: &[usize]) {
+                self.inner.__ls_shard_bump(tables)
             }
 
             #[cfg(feature = "host")]

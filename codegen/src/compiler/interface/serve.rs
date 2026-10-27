@@ -535,6 +535,8 @@ pub(crate) fn emit_protocol(out: &mut String, workload: &Workload) -> Result<(),
     line(out, "");
     line(out, "struct __LsServer {");
     line(out, "    db: std::sync::RwLock<Db>,");
+    line(out, "    tables: Vec<std::sync::Mutex<()>>,");
+    line(out, "    commit: std::sync::Mutex<()>,");
     line(out, "    durable: std::sync::Mutex<__LsDurable>,");
     line(out, "    durability_wake: std::sync::Condvar,");
     line(out, "    group_commit: std::time::Duration,");
@@ -617,6 +619,103 @@ pub(crate) fn emit_protocol(out: &mut String, workload: &Workload) -> Result<(),
     line(out, "    }");
     line(out, "}");
     line(out, "");
+    line(out, "fn __ls_cli_lock_tables<'a>(__ls_server: &'a __LsServer, __ls_tables: &[usize], __ls_deadline: std::time::Instant) -> io::Result<Vec<std::sync::MutexGuard<'a, ()>>> {");
+    line(
+        out,
+        "    let mut __ls_sorted: Vec<usize> = __ls_tables.to_vec();",
+    );
+    line(out, "    __ls_sorted.sort_unstable();");
+    line(out, "    __ls_sorted.dedup();");
+    line(
+        out,
+        "    let mut __ls_guards = Vec::with_capacity(__ls_sorted.len());",
+    );
+    line(out, "    for __ls_table in __ls_sorted {");
+    line(out, "        let __ls_mutex = __ls_server.tables.get(__ls_table).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, \"unknown table lock\"))?;");
+    line(out, "        loop {");
+    line(out, "            match __ls_mutex.try_lock() {");
+    line(
+        out,
+        "                Ok(__ls_guard) => { __ls_guards.push(__ls_guard); break; }",
+    );
+    line(out, "                Err(std::sync::TryLockError::Poisoned(_)) => { eprintln!(\"server table lock is poisoned; exiting\"); std::process::exit(1); }");
+    line(
+        out,
+        "                Err(std::sync::TryLockError::WouldBlock) => {",
+    );
+    line(
+        out,
+        "                    let __ls_now = std::time::Instant::now();",
+    );
+    line(out, "                    if __ls_now >= __ls_deadline { return Err(io::Error::new(io::ErrorKind::TimedOut, \"timed out waiting for the database lock\")); }");
+    line(out, "                    std::thread::yield_now();");
+    line(out, "                    std::thread::sleep(__ls_deadline.saturating_duration_since(__ls_now).min(std::time::Duration::from_micros(10)));");
+    line(out, "                }");
+    line(out, "            }");
+    line(out, "        }");
+    line(out, "    }");
+    line(out, "    Ok(__ls_guards)");
+    line(out, "}");
+    line(out, "");
+    line(out, "fn __ls_cli_lock_commit<'a>(__ls_server: &'a __LsServer, __ls_deadline: std::time::Instant) -> io::Result<std::sync::MutexGuard<'a, ()>> {");
+    line(out, "    loop {");
+    line(out, "        match __ls_server.commit.try_lock() {");
+    line(out, "            Ok(__ls_guard) => return Ok(__ls_guard),");
+    line(out, "            Err(std::sync::TryLockError::Poisoned(_)) => { eprintln!(\"server commit lock is poisoned; exiting\"); std::process::exit(1); }");
+    line(
+        out,
+        "            Err(std::sync::TryLockError::WouldBlock) => {",
+    );
+    line(
+        out,
+        "                let __ls_now = std::time::Instant::now();",
+    );
+    line(out, "                if __ls_now >= __ls_deadline { return Err(io::Error::new(io::ErrorKind::TimedOut, \"timed out waiting for the database lock\")); }");
+    line(out, "                std::thread::yield_now();");
+    line(out, "                std::thread::sleep(__ls_deadline.saturating_duration_since(__ls_now).min(std::time::Duration::from_micros(10)));");
+    line(out, "            }");
+    line(out, "        }");
+    line(out, "    }");
+    line(out, "}");
+    line(out, "");
+    line(out, "fn __ls_cli_sharded_autocommit(__ls_server: &__LsServer, __ls_payload: &[u8], __ls_deadline: std::time::Instant) -> io::Result<Vec<u8>> {");
+    line(
+        out,
+        "    let __ls_index_opt = __ls_cli_request_index(__ls_payload);",
+    );
+    line(out, "    let __ls_write_tables: Vec<usize> = match __ls_index_opt { Some(__ls_idx) => __ls_cli_operation_writes(__ls_idx).to_vec(), None => (0..__ls_server.tables.len()).collect() };");
+    line(out, "    let __ls_table_guards = __ls_cli_lock_tables(__ls_server, &__ls_write_tables, __ls_deadline)?;");
+    line(out, "    let (__ls_work_clone, __ls_versions, __ls_base_rows) = { let __ls_db = __ls_cli_read_db(__ls_server, __ls_deadline)?; let __ls_versions = __ls_db.__ls_versions.clone(); let __ls_base = __ls_db.__ls_row_count(); match __ls_db.__ls_clone_committed() { Ok(__ls_c) => (__ls_c, __ls_versions, __ls_base), Err(__ls_e) => { drop(__ls_db); drop(__ls_table_guards); return Ok(__ls_cli_error(&__ls_e.to_string())); } } };");
+    line(out, "    let mut __ls_work = __ls_work_clone;");
+    line(out, "    let (__ls_resp, __ls_clone_lsn, __ls_changed) = __ls_cli_serve_write(&mut __ls_work, __ls_payload);");
+    line(out, "    let _ = __ls_clone_lsn;");
+    line(out, "    if let Some(__ls_msg) = __ls_work.__ls_broken_message() { eprintln!(\"database entered a failed state: {__ls_msg}; server exiting\"); std::process::exit(1); }");
+    line(out, "    if __ls_resp.first() != Some(&0u8) || !__ls_changed { drop(__ls_table_guards); return Ok(__ls_resp); }");
+    line(out, "    let __ls_effects = match __ls_work.__ls_take_effects() { Ok(__ls_e) => __ls_e, Err(__ls_e) => { drop(__ls_table_guards); return Ok(__ls_cli_error(&__ls_e.to_string())); } };");
+    line(
+        out,
+        "    if __ls_effects.is_empty() { drop(__ls_table_guards); return Ok(__ls_resp); }",
+    );
+    line(
+        out,
+        "    let __ls_commit_guard = __ls_cli_lock_commit(__ls_server, __ls_deadline)?;",
+    );
+    line(out, "    let __ls_lsn = { let mut __ls_db = __ls_cli_write_db(__ls_server, __ls_deadline)?; let mut __ls_conflicted = false; for (__ls_idx, (__ls_snap, __ls_cur)) in __ls_versions.iter().zip(__ls_db.__ls_versions.iter()).enumerate() { if __ls_write_tables.contains(&__ls_idx) && __ls_snap != __ls_cur { __ls_conflicted = true; break; } } if __ls_conflicted { drop(__ls_db); drop(__ls_commit_guard); drop(__ls_table_guards); return Ok(__ls_cli_error(\"write conflict; retry the operation\")); } let __ls_rows = __ls_db.__ls_row_count().saturating_add(__ls_work.__ls_row_count()).saturating_sub(__ls_base_rows); if let Err(__ls_e) = __ls_db.__ls_check_row_limit(__ls_rows) { drop(__ls_db); drop(__ls_commit_guard); drop(__ls_table_guards); return Ok(__ls_cli_error(&__ls_e.to_string())); } if let Err(__ls_e) = __ls_db.__ls_commit_effects(&__ls_effects) { if let Some(__ls_msg) = __ls_db.__ls_broken_message() { eprintln!(\"database entered a failed state: {__ls_msg}; server exiting\"); std::process::exit(1); } drop(__ls_db); drop(__ls_commit_guard); drop(__ls_table_guards); return Ok(__ls_cli_error(&__ls_e.to_string())); } if let Some(__ls_msg) = __ls_db.__ls_broken_message() { eprintln!(\"database entered a failed state: {__ls_msg}; server exiting\"); std::process::exit(1); } if let Some(__ls_idx) = __ls_index_opt { __ls_cli_bump_tables(&mut __ls_db, __ls_cli_operation_writes(__ls_idx)); } let __ls_lsn = __ls_db.__ls_lsn; drop(__ls_db); drop(__ls_commit_guard); drop(__ls_table_guards); __ls_lsn };");
+    line(out, "    match __ls_cli_wait_durable(__ls_server, __ls_lsn, __ls_deadline) { Ok(()) => Ok(__ls_resp), Err(__ls_e) => Ok(__ls_cli_error(&__ls_e.to_string())) }");
+    line(out, "}");
+    line(out, "");
+    line(out, "fn __ls_cli_sharded_commit(__ls_server: &__LsServer, __ls_versions: &[u64], __ls_reads: &[bool], __ls_writes: &[bool], __ls_effects: &[u8], __ls_txn_rows: u64, __ls_base_rows: u64, __ls_deadline: std::time::Instant) -> io::Result<Vec<u8>> {");
+    line(out, "    let __ls_write_tables: Vec<usize> = __ls_writes.iter().enumerate().filter_map(|(__ls_idx, __ls_w)| if *__ls_w { Some(__ls_idx) } else { None }).collect();");
+    line(out, "    let __ls_table_guards = __ls_cli_lock_tables(__ls_server, &__ls_write_tables, __ls_deadline)?;");
+    line(
+        out,
+        "    let __ls_commit_guard = __ls_cli_lock_commit(__ls_server, __ls_deadline)?;",
+    );
+    line(out, "    let __ls_outcome = { let mut __ls_db = __ls_cli_write_db(__ls_server, __ls_deadline)?; let mut __ls_conflict: Option<String> = None; if __ls_writes.iter().any(|__ls_w| *__ls_w) { for (__ls_idx, (__ls_snap, __ls_cur)) in __ls_versions.iter().zip(__ls_db.__ls_versions.iter()).enumerate() { let __ls_touched = __ls_reads.get(__ls_idx).copied().unwrap_or(false) || __ls_writes.get(__ls_idx).copied().unwrap_or(false); if __ls_touched && __ls_snap != __ls_cur { __ls_conflict = Some(format!(\"write conflict on table `{}`; transaction rolled back\", __ls_cli_table_name(__ls_idx))); break; } } } let __ls_rows = __ls_db.__ls_row_count().saturating_add(__ls_txn_rows).saturating_sub(__ls_base_rows); let __ls_result = if let Some(__ls_msg) = __ls_conflict { Err(__ls_msg) } else if let Err(__ls_e) = __ls_db.__ls_check_row_limit(__ls_rows) { Err(__ls_e.to_string()) } else { match __ls_db.__ls_commit_effects(__ls_effects) { Ok(()) => { if let Some(__ls_msg) = __ls_db.__ls_broken_message() { eprintln!(\"database entered a failed state: {__ls_msg}; server exiting\"); std::process::exit(1); } __ls_cli_bump_writes(&mut __ls_db, __ls_writes); Ok(__ls_db.__ls_lsn) } Err(__ls_e) => { if let Some(__ls_msg) = __ls_db.__ls_broken_message() { eprintln!(\"database entered a failed state: {__ls_msg}; server exiting\"); std::process::exit(1); } Err(__ls_e.to_string()) } } }; drop(__ls_db); drop(__ls_commit_guard); drop(__ls_table_guards); __ls_result };");
+    line(out, "    match __ls_outcome { Ok(__ls_lsn) => match __ls_cli_wait_durable(__ls_server, __ls_lsn, __ls_deadline) { Ok(()) => Ok(__ls_cli_ok()), Err(__ls_e) => Ok(__ls_cli_error(&__ls_e.to_string())) }, Err(__ls_msg) => Ok(__ls_cli_error(&__ls_msg)) }");
+    line(out, "}");
+    line(out, "");
+    line(out, "static __LS_METRICS_GROUP_COMMIT_BATCHES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);");
     line(
         out,
         "fn __ls_cli_wait_durable(__ls_server: &__LsServer, __ls_lsn: u64, __ls_deadline: std::time::Instant) -> io::Result<()> {",
@@ -659,6 +758,10 @@ pub(crate) fn emit_protocol(out: &mut String, workload: &Workload) -> Result<(),
     line(
         out,
         "                    __ls_state.lsn = __ls_state.lsn.max(__ls_written).max(__ls_flushed);",
+    );
+    line(
+        out,
+        "                    __LS_METRICS_GROUP_COMMIT_BATCHES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);",
     );
     line(out, "                }");
     line(out, "                Ok((Err(__ls_error), _)) => {");
@@ -1108,7 +1211,15 @@ pub(crate) fn __ls_cli_serve_handshake(
         out,
         "    __ls_audit.event(\"server_start\", 0, \"-\", None, \"listening\");",
     );
-    line(out, "    let __ls_server = std::sync::Arc::new(__LsServer { db: std::sync::RwLock::new(__ls_db), durable: std::sync::Mutex::new(__LsDurable { lsn: __ls_initial_lsn, syncing: false }), durability_wake: std::sync::Condvar::new(), group_commit: __ls_cli_group_commit_delay(), connections: std::sync::atomic::AtomicUsize::new(0), transactions: std::sync::atomic::AtomicUsize::new(0), max_transactions: __ls_max_transactions, credentials: std::sync::Mutex::new(__ls_credentials), audit: std::sync::Arc::clone(&__ls_audit) });");
+    line(
+        out,
+        &format!(
+            "    let mut __ls_table_locks = Vec::with_capacity({});",
+            workload.tables.len()
+        ),
+    );
+    line(out, "    for _ in 0..__ls_table_locks.capacity() { __ls_table_locks.push(std::sync::Mutex::new(())); }");
+    line(out, "    let __ls_server = std::sync::Arc::new(__LsServer { db: std::sync::RwLock::new(__ls_db), tables: __ls_table_locks, commit: std::sync::Mutex::new(()), durable: std::sync::Mutex::new(__LsDurable { lsn: __ls_initial_lsn, syncing: false }), durability_wake: std::sync::Condvar::new(), group_commit: __ls_cli_group_commit_delay(), connections: std::sync::atomic::AtomicUsize::new(0), transactions: std::sync::atomic::AtomicUsize::new(0), max_transactions: __ls_max_transactions, credentials: std::sync::Mutex::new(__ls_credentials), audit: std::sync::Arc::clone(&__ls_audit) });");
     line(out, "    let mut __ls_next = 1u64;");
     line(out, "    loop {");
     line(out, "        match __ls_cli_accept(&__ls_listener) {");
@@ -1295,18 +1406,8 @@ pub(crate) fn __ls_cli_serve_connection(__ls_stream: &mut __LsStream, __ls_serve
                     let __ls_db = __ls_cli_read_db(__ls_server, __ls_deadline)?;
                     __ls_cli_serve_read(&__ls_db, &__ls_payload)
                 } else {
-                    let __ls_index = __ls_cli_request_index(&__ls_payload);
-                    let mut __ls_db = __ls_cli_write_db(__ls_server, __ls_deadline)?;
-                    let (__ls_response, __ls_lsn, __ls_changed) = __ls_cli_serve_write(&mut __ls_db, &__ls_payload);
-                    if __ls_response.first() == Some(&0) && __ls_changed {
-                        if let Some(__ls_index) = __ls_index {
-                            __ls_cli_bump_tables(&mut __ls_db, __ls_cli_operation_writes(__ls_index));
-                        }
-                    }
-                    drop(__ls_db);
-                    match __ls_cli_wait_durable(__ls_server, __ls_lsn, __ls_deadline) {
-                        Ok(()) => __ls_response,
-                        Err(__ls_error) => __ls_cli_error(&__ls_error.to_string()),
+                    match __ls_cli_sharded_autocommit(__ls_server, &__ls_payload, __ls_deadline)? {
+                        __ls_response => __ls_response,
                     }
                 }
             }
@@ -1356,36 +1457,10 @@ pub(crate) fn __ls_cli_serve_connection(__ls_stream: &mut __LsStream, __ls_serve
                         );
                         __ls_cli_error(&__ls_message)
                     } else {
-                        let mut __ls_db = __ls_cli_write_db(__ls_server, __ls_deadline)?;
-                        if let Some(__ls_conflict) = __ls_cli_conflict(&__ls_transaction, &__ls_db) {
-                            drop(__ls_db);
-                            __ls_cli_error(&__ls_conflict)
-                        } else {
-                            let __ls_rows = __ls_db.__ls_row_count()
-                                .saturating_add(__ls_transaction.db.__ls_row_count())
-                                .saturating_sub(__ls_transaction.base_rows);
-                            if let Err(__ls_error) = __ls_db.__ls_check_row_limit(__ls_rows) {
-                                drop(__ls_db);
-                                __ls_cli_error(&__ls_error.to_string())
-                            } else {
-                            let __ls_result = __ls_db.__ls_commit_effects(&__ls_effects);
-                            if let Some(__ls_message) = __ls_db.__ls_broken_message() {
-                                eprintln!("database entered a failed state: {__ls_message}; server exiting");
-                                std::process::exit(1);
-                            }
-                            if __ls_result.is_ok() {
-                                __ls_cli_bump_writes(&mut __ls_db, &__ls_transaction.writes);
-                            }
-                            let __ls_lsn = __ls_db.__ls_lsn;
-                            drop(__ls_db);
-                            match __ls_result {
-                                Ok(()) => match __ls_cli_wait_durable(__ls_server, __ls_lsn, __ls_deadline) {
-                                    Ok(()) => __ls_cli_ok(),
-                                    Err(__ls_error) => __ls_cli_error(&__ls_error.to_string()),
-                                },
-                                Err(__ls_error) => __ls_cli_error(&__ls_error.to_string()),
-                            }
-                            }
+                        let __ls_txn_rows = __ls_transaction.db.__ls_row_count();
+                        let __ls_txn_base = __ls_transaction.base_rows;
+                        match __ls_cli_sharded_commit(__ls_server, &__ls_transaction.versions, &__ls_transaction.reads, &__ls_transaction.writes, &__ls_effects, __ls_txn_rows, __ls_txn_base, __ls_deadline)? {
+                            __ls_response => __ls_response,
                         }
                     }
                 } else {

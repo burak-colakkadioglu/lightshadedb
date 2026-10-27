@@ -369,6 +369,7 @@ pub struct Field {
 pub struct Table {
     pub name: String,
     pub fields: Vec<Field>,
+    pub ttl_secs: Option<u64>,
 }
 
 impl Table {
@@ -479,6 +480,11 @@ impl fmt::Display for FieldRef {
 pub struct Join {
     pub table: String,
     pub alias: Option<String>,
+    pub keys: Vec<JoinKey>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JoinKey {
     pub left: FieldRef,
     pub right: FieldRef,
 }

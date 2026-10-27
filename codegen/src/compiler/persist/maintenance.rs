@@ -236,5 +236,73 @@ pub(crate) fn emit_transaction_support(
     writeln!(out, "        Ok(())").unwrap();
     writeln!(out, "    }}").unwrap();
     writeln!(out).unwrap();
+    writeln!(
+        out,
+        "    #[doc(hidden)] pub fn __ls_shard_clone(&self) -> io::Result<Db> {{"
+    )
+    .unwrap();
+    writeln!(out, "        self.__ls_clone_committed()").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "    #[doc(hidden)] pub fn __ls_shard_take(&mut self) -> io::Result<Vec<u8>> {{"
+    )
+    .unwrap();
+    writeln!(out, "        self.__ls_take_effects()").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "    #[doc(hidden)] pub fn __ls_shard_commit(&mut self, __ls_effects: &[u8]) -> io::Result<()> {{").unwrap();
+    writeln!(out, "        self.__ls_commit_effects(__ls_effects)").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "    #[doc(hidden)] pub fn __ls_shard_row_count(&self) -> u64 {{"
+    )
+    .unwrap();
+    writeln!(out, "        self.__ls_row_count()").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "    #[doc(hidden)] pub fn __ls_shard_check_row_limit(&self, __ls_rows: u64) -> io::Result<()> {{").unwrap();
+    writeln!(out, "        self.__ls_check_row_limit(__ls_rows)").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "    #[doc(hidden)] pub fn __ls_shard_broken(&self) -> Option<String> {{"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "        self.__ls_broken_message().map(|__ls_msg| __ls_msg.to_string())"
+    )
+    .unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "    #[doc(hidden)] pub fn __ls_shard_lsn(&self) -> u64 {{"
+    )
+    .unwrap();
+    writeln!(out, "        self.__ls_lsn").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "    #[doc(hidden)] pub fn __ls_shard_versions(&self) -> Vec<u64> {{"
+    )
+    .unwrap();
+    writeln!(out, "        self.__ls_versions.clone()").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "    #[doc(hidden)] pub fn __ls_shard_bump(&mut self, __ls_tables: &[usize]) {{"
+    )
+    .unwrap();
+    writeln!(out, "        for &__ls_table in __ls_tables {{ if let Some(__ls_version) = self.__ls_versions.get_mut(__ls_table) {{ *__ls_version = __ls_version.wrapping_add(1); }} }}").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
     Ok(())
 }

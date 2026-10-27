@@ -4,6 +4,7 @@ pub mod admin;
 pub mod backend;
 pub mod dataplane;
 pub mod error;
+pub mod metrics;
 pub mod migration;
 pub mod net;
 pub mod options;

@@ -53,6 +53,11 @@ pub(crate) fn server_wrapper(
 ) -> TokenStream {
     let dispatch = server_dispatch(schema, lowered);
     let is_write = server_write_indices(schema, lowered);
+    let table_count = lowered.tables.len();
+    let base_operations = schema
+        .operations
+        .as_ref()
+        .map_or(0, |operations| operations.methods.len());
     quote! {
         #[cfg(feature = "host")]
         fn __ls_is_write_operation(index: u32) -> bool {
@@ -168,6 +173,14 @@ pub(crate) fn server_wrapper(
                         served.name,
                         __LsServed {
                             db: ::std::sync::RwLock::new(served.db),
+                            tables: {
+                                let mut __ls_table_locks = ::std::vec::Vec::with_capacity(#table_count);
+                                for _ in 0..#table_count {
+                                    __ls_table_locks.push(::std::sync::Mutex::new(()));
+                                }
+                                __ls_table_locks
+                            },
+                            commit: ::std::sync::Mutex::new(()),
                             credentials,
                             fingerprint: #fingerprint,
                         },
@@ -282,8 +295,66 @@ pub(crate) fn server_wrapper(
         #[cfg(feature = "host")]
         struct __LsServed {
             db: ::std::sync::RwLock<Db>,
+            tables: ::std::vec::Vec<::std::sync::Mutex<()>>,
+            commit: ::std::sync::Mutex<()>,
             credentials: ::std::sync::Arc<::lightshadedb::Credentials>,
             fingerprint: u64,
+        }
+
+        #[cfg(feature = "host")]
+        fn __ls_write_table_for(__ls_index: u32) -> ::std::option::Option<usize> {
+            let __ls_base = #base_operations as u32;
+            if __ls_index < __ls_base {
+                return ::std::option::Option::None;
+            }
+            let __ls_offset = __ls_index - __ls_base;
+            let __ls_table = (__ls_offset / 10) as usize;
+            let __ls_slot = __ls_offset % 10;
+            let __ls_is_write = matches!(__ls_slot, 0 | 1 | 2 | 3 | 6 | 7);
+            if !__ls_is_write || __ls_table >= #table_count {
+                return ::std::option::Option::None;
+            }
+            ::std::option::Option::Some(__ls_table)
+        }
+
+        #[cfg(feature = "host")]
+        fn __ls_lock_tables<'a>(
+            __ls_entry: &'a __LsServed,
+            __ls_tables: &[usize],
+        ) -> ::std::vec::Vec<::std::sync::MutexGuard<'a, ()>> {
+            let mut __ls_sorted: ::std::vec::Vec<usize> = __ls_tables.to_vec();
+            __ls_sorted.sort_unstable();
+            __ls_sorted.dedup();
+            let mut __ls_guards = ::std::vec::Vec::with_capacity(__ls_sorted.len());
+            for __ls_table in __ls_sorted {
+                let __ls_mutex = match __ls_entry.tables.get(__ls_table) {
+                    ::std::option::Option::Some(__ls_m) => __ls_m,
+                    ::std::option::Option::None => continue,
+                };
+                match __ls_mutex.lock() {
+                    ::std::result::Result::Ok(__ls_g) => __ls_guards.push(__ls_g),
+                    ::std::result::Result::Err(__ls_poisoned) => __ls_guards.push(__ls_poisoned.into_inner()),
+                }
+            }
+            __ls_guards
+        }
+
+        #[cfg(feature = "host")]
+        fn __ls_lock_all<'a>(
+            __ls_entry: &'a __LsServed,
+        ) -> ::std::vec::Vec<::std::sync::MutexGuard<'a, ()>> {
+            let __ls_all: ::std::vec::Vec<usize> = (0..__ls_entry.tables.len()).collect();
+            __ls_lock_tables(__ls_entry, &__ls_all)
+        }
+
+        #[cfg(feature = "host")]
+        fn __ls_lock_commit<'a>(
+            __ls_entry: &'a __LsServed,
+        ) -> ::std::sync::MutexGuard<'a, ()> {
+            match __ls_entry.commit.lock() {
+                ::std::result::Result::Ok(__ls_g) => __ls_g,
+                ::std::result::Result::Err(__ls_poisoned) => __ls_poisoned.into_inner(),
+            }
         }
 
         #[cfg(feature = "host")]
@@ -319,6 +390,7 @@ pub(crate) fn server_wrapper(
                     return;
                 }
             };
+            let hello_version = hello.version;
             if ::lightshadedb::wire::write_handshake_ok(&mut stream).is_err() {
                 return;
             }
@@ -334,7 +406,83 @@ pub(crate) fn server_wrapper(
                         return;
                     }
                 };
-                let result = if kind == ::lightshadedb::wire::RequestKind::Operation
+                let result = if kind == ::lightshadedb::wire::RequestKind::WalMeta
+                    || kind == ::lightshadedb::wire::RequestKind::WalChunk
+                {
+                    if hello_version != ::lightshadedb::wire::VERSION {
+                        ::std::result::Result::Err(::lightshadedb::Error::Protocol {
+                            reason: ::std::format!(
+                                "follower tailing needs LSRP v{}",
+                                ::lightshadedb::wire::VERSION
+                            ),
+                        })
+                    } else if kind == ::lightshadedb::wire::RequestKind::WalMeta {
+                        let db = match entry.db.read() {
+                            ::std::result::Result::Ok(db) => db,
+                            ::std::result::Result::Err(poisoned) => poisoned.into_inner(),
+                        };
+                        let lsn = db.__ls_current_lsn();
+                        let wal_len = db.__ls_wal_valid_len();
+                        ::std::result::Result::Ok(::std::vec![
+                            ::lightshadedb::table::Value::U64(#fingerprint),
+                            ::lightshadedb::table::Value::U64(lsn),
+                            ::lightshadedb::table::Value::U64(wal_len),
+                        ])
+                    } else {
+                        match (params.first(), params.get(1)) {
+                            (
+                                ::std::option::Option::Some(::lightshadedb::table::Value::U64(offset)),
+                                ::std::option::Option::Some(::lightshadedb::table::Value::U64(want)),
+                            ) => {
+                                let want = (*want).min(1024 * 1024) as usize;
+                                let wal_path = {
+                                    let db = match entry.db.read() {
+                                        ::std::result::Result::Ok(db) => db,
+                                        ::std::result::Result::Err(poisoned) => poisoned.into_inner(),
+                                    };
+                                    let mut wal = db.path().as_os_str().to_os_string();
+                                    wal.push(".wal");
+                                    ::std::path::PathBuf::from(wal)
+                                };
+                                let step = (|| -> ::std::result::Result<::std::vec::Vec<u8>, ::lightshadedb::Error> {
+                                    use ::std::io::{Read as _, Seek as _};
+                                    let mut file = ::std::fs::File::open(&wal_path).map_err(|error| {
+                                        ::lightshadedb::Error::io("opening primary wal", error)
+                                    })?;
+                                    let end = file.metadata().map(|meta| meta.len()).unwrap_or(0);
+                                    if *offset >= end {
+                                        return ::std::result::Result::Ok(::std::vec::Vec::new());
+                                    }
+                                    file.seek(::std::io::SeekFrom::Start(*offset)).map_err(|error| {
+                                        ::lightshadedb::Error::io("seeking primary wal", error)
+                                    })?;
+                                    let mut buf = vec![0u8; want.min((end - *offset) as usize)];
+                                    let mut read = 0usize;
+                                    while read < buf.len() {
+                                        match file.read(&mut buf[read..]) {
+                                            ::std::result::Result::Ok(0) => break,
+                                            ::std::result::Result::Ok(n) => read += n,
+                                            ::std::result::Result::Err(error) => {
+                                                return ::std::result::Result::Err(::lightshadedb::Error::io("reading primary wal", error));
+                                            }
+                                        }
+                                    }
+                                    buf.truncate(read);
+                                    ::std::result::Result::Ok(buf)
+                                })();
+                                match step {
+                                    ::std::result::Result::Ok(bytes) => ::std::result::Result::Ok(::std::vec![
+                                        ::lightshadedb::table::Value::Bytes(bytes),
+                                    ]),
+                                    ::std::result::Result::Err(error) => ::std::result::Result::Err(error),
+                                }
+                            }
+                            _ => ::std::result::Result::Err(::lightshadedb::Error::Protocol {
+                                reason: "wal chunk needs u64 offset and length".to_string(),
+                            }),
+                        }
+                    }
+                } else if kind == ::lightshadedb::wire::RequestKind::Operation
                     && !role.can_write()
                     && __ls_is_write_operation(index)
                 {
@@ -350,31 +498,136 @@ pub(crate) fn server_wrapper(
                     };
                     __ls_server_dispatch_read(&db, index, &params)
                 } else {
-                    let (result, waited) = {
-                        let mut db = match entry.db.write() {
-                            ::std::result::Result::Ok(db) => db,
-                            ::std::result::Result::Err(poisoned) => poisoned.into_inner(),
+                    let __ls_is_op = kind == ::lightshadedb::wire::RequestKind::Operation;
+                    let __ls_table_opt = if __ls_is_op && __ls_is_write_operation(index) {
+                        __ls_write_table_for(index)
+                    } else {
+                        ::std::option::Option::None
+                    };
+                    let __ls_in_txn = match entry.db.read() {
+                        ::std::result::Result::Ok(__ls_db) => __ls_db.in_transaction(),
+                        ::std::result::Result::Err(__ls_poisoned) => __ls_poisoned.into_inner().in_transaction(),
+                    };
+                    let (result, waited) = if __ls_is_op && __ls_table_opt.is_some() && !__ls_in_txn {
+                        let __ls_table = __ls_table_opt.unwrap_or(0);
+                        let __ls_table_guards = __ls_lock_tables(entry, &[__ls_table]);
+                        let (__ls_clone_result, __ls_base_rows) = {
+                            let __ls_read = match entry.db.read() {
+                                ::std::result::Result::Ok(__ls_r) => __ls_r,
+                                ::std::result::Result::Err(__ls_poisoned) => __ls_poisoned.into_inner(),
+                            };
+                            let __ls_base = __ls_read.__ls_shard_row_count();
+                            match __ls_read.__ls_shard_clone() {
+                                ::std::result::Result::Ok(__ls_c) => (::std::result::Result::Ok(__ls_c), __ls_base),
+                                ::std::result::Result::Err(__ls_e) => {
+                                    drop(__ls_read);
+                                    (::std::result::Result::Err(__ls_e), __ls_base)
+                                }
+                            }
                         };
-                        let __ls_before = db.__ls_current_lsn();
-                        let result = match kind {
-                            ::lightshadedb::wire::RequestKind::Operation => {
-                                __ls_server_dispatch_write(&mut db, index, &params)
+                        match __ls_clone_result {
+                            ::std::result::Result::Err(__ls_e) => {
+                                drop(__ls_table_guards);
+                                (::std::result::Result::Err(__ls_e), ::std::option::Option::None)
                             }
-                            ::lightshadedb::wire::RequestKind::Begin => {
-                                db.begin().map(|()| ::std::vec::Vec::new())
+                            ::std::result::Result::Ok(mut __ls_work) => {
+                                match __ls_server_dispatch_write(&mut __ls_work, index, &params) {
+                                    ::std::result::Result::Err(__ls_e) => {
+                                        drop(__ls_table_guards);
+                                        (::std::result::Result::Err(__ls_e), ::std::option::Option::None)
+                                    }
+                                    ::std::result::Result::Ok(__ls_values) => {
+                                        match __ls_work.__ls_shard_take() {
+                                            ::std::result::Result::Err(__ls_e) => {
+                                                drop(__ls_table_guards);
+                                                (::std::result::Result::Err(__ls_e), ::std::option::Option::None)
+                                            }
+                                            ::std::result::Result::Ok(__ls_eff) => {
+                                                if __ls_eff.is_empty() {
+                                                    drop(__ls_table_guards);
+                                                    (::std::result::Result::Ok(__ls_values), ::std::option::Option::None)
+                                                } else {
+                                                    let __ls_commit_guard = __ls_lock_commit(entry);
+                                                    let __ls_merged = {
+                                                        let mut __ls_write = match entry.db.write() {
+                                                            ::std::result::Result::Ok(__ls_w) => __ls_w,
+                                                            ::std::result::Result::Err(__ls_poisoned) => __ls_poisoned.into_inner(),
+                                                        };
+                                                        let __ls_rows = __ls_write.__ls_shard_row_count().saturating_add(__ls_work.__ls_shard_row_count()).saturating_sub(__ls_base_rows);
+                                                        let __ls_outcome = if let ::std::result::Result::Err(__ls_e) = __ls_write.__ls_shard_check_row_limit(__ls_rows) {
+                                                            ::std::result::Result::Err(__ls_e)
+                                                        } else {
+                                                            match __ls_write.__ls_shard_commit(&__ls_eff) {
+                                                                ::std::result::Result::Ok(()) => {
+                                                                    if let ::std::option::Option::Some(__ls_msg) = __ls_write.__ls_shard_broken() {
+                                                                        eprintln!("database entered a failed state: {__ls_msg}; server exiting");
+                                                                        std::process::exit(1);
+                                                                    }
+                                                                    ::std::result::Result::Ok(__ls_write.__ls_shard_lsn())
+                                                                }
+                                                                ::std::result::Result::Err(__ls_e) => {
+                                                                    if let ::std::option::Option::Some(__ls_msg) = __ls_write.__ls_shard_broken() {
+                                                                        eprintln!("database entered a failed state: {__ls_msg}; server exiting");
+                                                                        std::process::exit(1);
+                                                                    }
+                                                                    ::std::result::Result::Err(__ls_e)
+                                                                }
+                                                            }
+                                                        };
+                                                        drop(__ls_write);
+                                                        drop(__ls_commit_guard);
+                                                        drop(__ls_table_guards);
+                                                        __ls_outcome
+                                                    };
+                                                    match __ls_merged {
+                                                        ::std::result::Result::Ok(__ls_lsn) => (::std::result::Result::Ok(__ls_values), ::std::option::Option::Some(__ls_lsn)),
+                                                        ::std::result::Result::Err(__ls_e) => (::std::result::Result::Err(__ls_e), ::std::option::Option::None),
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            ::lightshadedb::wire::RequestKind::Commit => {
-                                db.commit().map(|()| ::std::vec::Vec::new())
-                            }
-                            ::lightshadedb::wire::RequestKind::Rollback => {
-                                db.rollback().map(|()| ::std::vec::Vec::new())
-                            }
+                        }
+                    } else {
+                        let __ls_all_guards = __ls_lock_all(entry);
+                        let __ls_commit_guard = __ls_lock_commit(entry);
+                        let (result, waited) = {
+                            let mut db = match entry.db.write() {
+                                ::std::result::Result::Ok(db) => db,
+                                ::std::result::Result::Err(poisoned) => poisoned.into_inner(),
+                            };
+                            let __ls_before = db.__ls_current_lsn();
+                            let result = match kind {
+                                ::lightshadedb::wire::RequestKind::Operation => {
+                                    __ls_server_dispatch_write(&mut db, index, &params)
+                                }
+                                ::lightshadedb::wire::RequestKind::Begin => {
+                                    db.begin().map(|()| ::std::vec::Vec::new())
+                                }
+                                ::lightshadedb::wire::RequestKind::Commit => {
+                                    db.commit().map(|()| ::std::vec::Vec::new())
+                                }
+                                ::lightshadedb::wire::RequestKind::Rollback => {
+                                    db.rollback().map(|()| ::std::vec::Vec::new())
+                                }
+                                ::lightshadedb::wire::RequestKind::WalMeta
+                                | ::lightshadedb::wire::RequestKind::WalChunk => {
+                                    ::std::result::Result::Err(::lightshadedb::Error::Protocol {
+                                        reason: "wal tailing uses its own handler".to_string(),
+                                    })
+                                }
+                            };
+                            let __ls_after = db.__ls_current_lsn();
+                            (
+                                result,
+                                (__ls_after > __ls_before).then_some(__ls_after),
+                            )
                         };
-                        let __ls_after = db.__ls_current_lsn();
-                        (
-                            result,
-                            (__ls_after > __ls_before).then_some(__ls_after),
-                        )
+                        drop(__ls_commit_guard);
+                        drop(__ls_all_guards);
+                        (result, waited)
                     };
                     if let ::std::option::Option::Some(__ls_lsn) = waited {
                         let __ls_sync = {

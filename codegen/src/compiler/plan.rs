@@ -301,8 +301,16 @@ impl Fingerprint {
                             }
                             None => self.byte(0),
                         }
-                        self.field_ref(&join.left);
-                        self.field_ref(&join.right);
+                        if join.keys.len() == 1 {
+                            self.field_ref(&join.keys[0].left);
+                            self.field_ref(&join.keys[0].right);
+                        } else {
+                            self.u32(join.keys.len() as u32);
+                            for key in &join.keys {
+                                self.field_ref(&key.left);
+                                self.field_ref(&key.right);
+                            }
+                        }
                     }
                     self.u32(select.len() as u32);
                     for item in select {
@@ -399,6 +407,10 @@ pub fn schema_fingerprint(workload: &Workload) -> u64 {
                 fingerprint.byte(1);
             }
         }
+        if let Some(secs) = table.ttl_secs {
+            fingerprint.byte(1);
+            fingerprint.u64(secs);
+        }
     }
     fingerprint.0
 }
@@ -434,6 +446,10 @@ pub fn workload_fingerprint(workload: &Workload) -> u64 {
                 }
                 None => fingerprint.byte(0),
             }
+        }
+        if let Some(secs) = table.ttl_secs {
+            fingerprint.byte(1);
+            fingerprint.u64(secs);
         }
     }
     fingerprint.u32(workload.operations.len() as u32);
@@ -540,13 +556,16 @@ pub(crate) fn build_plan(workload: &Workload) -> Result<Plan, String> {
             }
             for (offset, join) in joins.iter().enumerate() {
                 let depth = offset + 1;
+                if join.keys.len() != 1 {
+                    continue;
+                }
                 let joined = sources[depth].0;
-                let (left_index, _, left_field) = resolve_source(&join.left, &sources)?;
-                let (right_index, _, right_field) = resolve_source(&join.right, &sources)?;
-                let joined_field = if left_index == depth && right_index < depth {
-                    left_field
+                let (left_index, _, left_field) = resolve_source(&join.keys[0].left, &sources)?;
+                let (right_index, _, right_field) = resolve_source(&join.keys[0].right, &sources)?;
+                let (joined_field, outer_nullable) = if left_index == depth && right_index < depth {
+                    (left_field, right_field.nullable)
                 } else if right_index == depth && left_index < depth {
-                    right_field
+                    (right_field, left_field.nullable)
                 } else {
                     continue;
                 };
@@ -556,7 +575,7 @@ pub(crate) fn build_plan(workload: &Workload) -> Result<Plan, String> {
                 {
                     continue;
                 }
-                if joined_field.nullable {
+                if joined_field.nullable || outer_nullable {
                     continue;
                 }
                 let spec = IndexSpec {
@@ -576,23 +595,26 @@ pub(crate) fn build_plan(workload: &Workload) -> Result<Plan, String> {
         }
 
         if *count {
-            if let Some(constraints) = eq_constraints(filter) {
-                if constraints
-                    .iter()
-                    .any(|(field, _)| field_is_nullable(workload, table, field))
-                {
-                    continue;
+            let counted = get_table(workload, table)?;
+            if counted.ttl_secs.is_none() {
+                if let Some(constraints) = eq_constraints(filter) {
+                    if constraints
+                        .iter()
+                        .any(|(field, _)| field_is_nullable(workload, table, field))
+                    {
+                        continue;
+                    }
+                    let eq = constraints
+                        .iter()
+                        .map(|(field, _)| field.clone())
+                        .collect::<Vec<_>>();
+                    let spec = CounterSpec {
+                        table: table.clone(),
+                        eq,
+                    };
+                    let index = intern(&mut plan.counters, spec);
+                    plan.query_counter.insert(operation.name.clone(), index);
                 }
-                let eq = constraints
-                    .iter()
-                    .map(|(field, _)| field.clone())
-                    .collect::<Vec<_>>();
-                let spec = CounterSpec {
-                    table: table.clone(),
-                    eq,
-                };
-                let index = intern(&mut plan.counters, spec);
-                plan.query_counter.insert(operation.name.clone(), index);
             }
         } else if !order.is_empty() {
             let primary = get_table(workload, table)?;
@@ -1010,8 +1032,14 @@ pub(crate) fn pk_join_key(
     depth: usize,
     sources: &[(&Table, String)],
 ) -> Result<Option<String>, String> {
-    let (left_index, left_table, left_field) = resolve_source(&join.left, sources)?;
-    let (right_index, right_table, right_field) = resolve_source(&join.right, sources)?;
+    if join.keys.len() != 1 {
+        return Ok(None);
+    }
+    let (left_index, left_table, left_field) = resolve_source(&join.keys[0].left, sources)?;
+    let (right_index, right_table, right_field) = resolve_source(&join.keys[0].right, sources)?;
+    if left_field.nullable || right_field.nullable {
+        return Ok(None);
+    }
     if left_index == depth
         && right_index < depth
         && left_table
@@ -1019,7 +1047,7 @@ pub(crate) fn pk_join_key(
             .is_some_and(|key| key.name == left_field.name)
     {
         return Ok(Some(emit_field_read(
-            &join.right,
+            &join.keys[0].right,
             &sources[..=depth],
             false,
         )?));
@@ -1031,7 +1059,7 @@ pub(crate) fn pk_join_key(
             .is_some_and(|key| key.name == right_field.name)
     {
         return Ok(Some(emit_field_read(
-            &join.left,
+            &join.keys[0].left,
             &sources[..=depth],
             false,
         )?));
@@ -1044,8 +1072,14 @@ pub(crate) fn pk_join_key_ty(
     depth: usize,
     sources: &[(&Table, String)],
 ) -> Result<Option<Ty>, String> {
-    let (left_index, left_table, left_field) = resolve_source(&join.left, sources)?;
-    let (right_index, right_table, right_field) = resolve_source(&join.right, sources)?;
+    if join.keys.len() != 1 {
+        return Ok(None);
+    }
+    let (left_index, left_table, left_field) = resolve_source(&join.keys[0].left, sources)?;
+    let (right_index, right_table, right_field) = resolve_source(&join.keys[0].right, sources)?;
+    if left_field.nullable || right_field.nullable {
+        return Ok(None);
+    }
     if left_index == depth
         && right_index < depth
         && left_table

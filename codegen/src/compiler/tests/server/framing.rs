@@ -102,6 +102,7 @@ fn server_serves_typed_operations_over_a_socket() {
         .env("LIGHTSHADE_CREDENTIAL_SECRET", TEST_SECRET)
         .env("LIGHTSHADE_LOCK_TIMEOUT_MS", "1500")
         .env("LIGHTSHADE_CHECKPOINT_BYTES", "1")
+        .env("LIGHTSHADE_WAL_PREALLOC_BYTES", "0")
         .stdout(Stdio::null())
         .stderr(Stdio::inherit())
         .spawn()

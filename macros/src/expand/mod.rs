@@ -9,7 +9,7 @@ mod table;
 mod types;
 
 use app::app_wrapper;
-use client::{async_client_wrapper, client_wrapper};
+use client::{async_client_wrapper, client_wrapper, follower_wrapper};
 use db::db_wrapper;
 use migration::migration_support;
 use ops::typecheck_fn;
@@ -255,6 +255,7 @@ fn expand_items(
 
     output.extend(db_wrapper(schema, lowered));
     output.extend(client_wrapper(schema, lowered, fingerprint));
+    output.extend(follower_wrapper(schema, lowered, fingerprint));
     output.extend(async_client_wrapper(schema, lowered, fingerprint));
     output.extend(server_wrapper(schema, lowered, fingerprint));
     output.extend(app_wrapper(schema, lowered));

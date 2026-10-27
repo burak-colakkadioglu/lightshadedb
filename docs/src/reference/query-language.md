@@ -36,9 +36,10 @@ both sides normalize to `Option<&T>`, `(Some, Some)` pairs compare,
 anything else yields false. Same rule across join sources.
 
 But don't mistake `is_null()` for full nullable support. Queries
-over nullable columns are heavily gated at lowering: inserts, gets,
-scans, counts, and patches work, but nullable join keys are rejected
-outright and many nullable-column queries won't lower yet. If the
+over nullable columns are still gated at lowering: inserts, gets,
+scans, counts, patches, and joins work (nullable join keys use
+three-valued equijoin semantics, so `NULL` never matches), but many
+other nullable-column queries won't lower yet. If the
 compiler refuses your nullable query, it's a missing feature with a
 clear error, not a subtle wrong answer. And wrong answers would be
 worse.
@@ -80,10 +81,27 @@ field`). The compiler checks. The runtime never sees it.
 joins = (Inbox.join_on(Message::inbox_id.eq_field(Inbox::id)),),
 ```
 
-`TableHandle::join_on` plus `eq_field`. Only `eq_field`.
-`select` can then pull fields from any source. Anything else
-(`ne_field`, nullable keys) fails at lowering with the reason
-spelled out.
+`TableHandle::join_on` plus `eq_field`. Only `eq_field`;
+anything else (`ne_field`, range comparisons) fails at lowering
+with the reason spelled out. `select` can then pull fields from
+any source.
+
+Conjoin several equalities inside one `join_on` for a multi-key
+join: every pair must match. Single-key joins over non-nullable
+fields use the usual fast paths (primary-key point lookup or
+index seek, shown by `explain`); multi-key joins run as a nested
+loop over the key conjunction.
+
+```rust
+joins = (Author.join_on(
+    Book::author_id.eq_field(Author::id) & Book::lang.eq_field(Author::lang)
+),),
+```
+
+Nullable keys are allowed and follow equijoin null semantics: a
+`NULL` on either side never matches, not even another `NULL`.
+Joins over nullable keys always run as a nested loop with that
+three-valued comparison, never as a point lookup.
 
 ## Types
 

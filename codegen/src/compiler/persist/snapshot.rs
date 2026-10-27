@@ -56,12 +56,25 @@ pub(crate) fn emit_snapshot(out: &mut String, workload: &Workload) -> Result<(),
             )
             .unwrap();
         }
-        writeln!(
-            out,
-            "        __ls_put_u64(&mut meta, self.t_{}.len() as u64);",
-            table.name
-        )
-        .unwrap();
+        if table.ttl_secs.is_some() {
+            writeln!(
+                out,
+                "        let mut __ls_live = 0u64;
+        for _ in self.t_{0}.values() {{
+            __ls_live += 1;
+        }}
+        __ls_put_u64(&mut meta, __ls_live);",
+                table.name
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                out,
+                "        __ls_put_u64(&mut meta, self.t_{}.len() as u64);",
+                table.name
+            )
+            .unwrap();
+        }
         writeln!(out, "        __ls_emit(writer, &mut hash, &meta)?;").unwrap();
         writeln!(
             out,
@@ -153,7 +166,7 @@ pub(crate) fn emit_from_snapshot(out: &mut String, workload: &Workload) -> Resul
     writeln!(out, "        let __ls_version = input.u32()?;").unwrap();
     writeln!(
         out,
-        "        if __ls_version != __LS_VERSION && __ls_version != __LS_PREVIOUS_VERSION && __ls_version != __LS_OLD_VERSION {{ return Err(__ls_invalid(\"unsupported snapshot version\")); }}"
+        "        if __ls_version != __LS_VERSION && __ls_version != __LS_PREVIOUS_VERSION && __ls_version != __LS_OLD_VERSION && __ls_version != __LS_ANCIENT_VERSION {{ return Err(__ls_invalid(\"unsupported snapshot version\")); }}"
     )
     .unwrap();
     writeln!(out, "        let stored_fingerprint = input.u64()?;").unwrap();
@@ -213,7 +226,7 @@ pub(crate) fn emit_from_snapshot(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "            while parsed < rows {{").unwrap();
         writeln!(
             out,
-            "                let (payload, chunk_rows) = __ls_read_chunk(&mut input, rows, &mut parsed)?;"
+            "                let (payload, chunk_rows) = __ls_read_chunk(&mut input, rows, &mut parsed, __ls_version)?;"
         )
         .unwrap();
         writeln!(
@@ -308,7 +321,7 @@ pub(crate) fn emit_from_snapshot(out: &mut String, workload: &Workload) -> Resul
         "            let mut rows = Vec::new();",
         "            let mut parsed = 0u64;",
         "            while parsed < row_count {",
-        "                let (payload, chunk_rows) = __ls_read_chunk(&mut input, row_count, &mut parsed)?;",
+        "                let (payload, chunk_rows) = __ls_read_chunk(&mut input, row_count, &mut parsed, __ls_version)?;",
         "                let mut chunk = __LsReader::new(&payload);",
         "                for _ in 0..chunk_rows {",
         "                    let mut row = Vec::with_capacity(column_count);",

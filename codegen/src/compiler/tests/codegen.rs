@@ -334,7 +334,7 @@ fn expanded_types_round_trip_through_generated_interfaces() {
 
     let (success, output) = run(&["inspect"]);
     assert!(success, "{output}");
-    assert!(output.contains("version: 8"), "{output}");
+    assert!(output.contains("version: 9"), "{output}");
     assert!(output.contains("half: f32"), "{output}");
     assert!(output.contains("real: f64"), "{output}");
     assert!(output.contains("blob: bytes"), "{output}");
@@ -447,8 +447,8 @@ operation remove(wanted: f64) {
 fn format_version_tracks_the_expanded_types() {
     let workload = parse_workload(ALT_SOURCE).unwrap();
     let source = generate_interface(&workload).unwrap();
-    assert!(source.contains("const __LS_VERSION: u32 = 8;"));
-    assert!(source.contains("const __LS_PREVIOUS_VERSION: u32 = 7;"));
-    assert!(source.contains("const __LS_OLD_VERSION: u32 = 6;"));
-    assert!(source.contains("const __LS_WAL_VERSION: u32 = 3;"));
+    assert!(source.contains("const __LS_VERSION: u32 = 9;"));
+    assert!(source.contains("const __LS_PREVIOUS_VERSION: u32 = 8;"));
+    assert!(source.contains("const __LS_OLD_VERSION: u32 = 7;"));
+    assert!(source.contains("const __LS_WAL_VERSION: u32 = 4;"));
 }

@@ -19,6 +19,7 @@ pub struct Table {
     pub fields: Vec<ModelField>,
     pub primary_key: usize,
     pub rename_from: Option<String>,
+    pub ttl_secs: Option<u64>,
 }
 
 pub struct Projection {
@@ -166,6 +167,7 @@ struct StructAttrs {
     skip: bool,
     table: Option<String>,
     rename_from: Option<String>,
+    ttl_secs: Option<u64>,
 }
 
 fn parse_struct(item: &ItemStruct) -> syn::Result<Option<ParsedStruct>> {
@@ -262,12 +264,45 @@ fn parse_struct(item: &ItemStruct) -> syn::Result<Option<ParsedStruct>> {
     let db_name = attrs
         .table
         .unwrap_or_else(|| snake_case(&item.ident.to_string()));
+    if let Some(ttl_secs) = attrs.ttl_secs {
+        if attrs.skip {
+            return Err(syn::Error::new(
+                item.ident.span(),
+                "ttl_secs cannot be used on a skipped projection struct",
+            ));
+        }
+        let expires = fields.iter().find(|field| field.ident == "expires_at");
+        match expires {
+            Some(field) => {
+                if field.ir != Ty::I64 || field.nullable {
+                    return Err(syn::Error::new(
+                        field.span,
+                        "ttl_secs tables need a non-nullable expires_at i64 field holding absolute milliseconds",
+                    ));
+                }
+                if field.primary_key {
+                    return Err(syn::Error::new(
+                        field.span,
+                        "ttl_secs expiry field expires_at cannot be the primary key",
+                    ));
+                }
+            }
+            None => {
+                return Err(syn::Error::new(
+                    item.ident.span(),
+                    "ttl_secs tables need a non-nullable expires_at i64 field holding absolute milliseconds",
+                ));
+            }
+        }
+        let _ = ttl_secs;
+    }
     Ok(Some(ParsedStruct::Table(Table {
         ident: item.ident.clone(),
         db_name,
         fields,
         primary_key,
         rename_from: attrs.rename_from,
+        ttl_secs: attrs.ttl_secs,
     })))
 }
 
@@ -341,6 +376,7 @@ fn struct_attrs(attrs: &[Attribute]) -> syn::Result<StructAttrs> {
         skip: false,
         table: None,
         rename_from: None,
+        ttl_secs: None,
     };
     for attr in attrs {
         if !attr.path().is_ident("lightshadedb") {
@@ -357,6 +393,17 @@ fn struct_attrs(attrs: &[Attribute]) -> syn::Result<StructAttrs> {
             }
             if meta.path.is_ident("rename_from") {
                 parsed.rename_from = Some(meta.value()?.parse::<LitStr>()?.value());
+                return Ok(());
+            }
+            if meta.path.is_ident("ttl_secs") {
+                let lit: syn::LitInt = meta.value()?.parse()?;
+                let value = lit.base10_parse::<u64>().map_err(|_| {
+                    meta.error("ttl_secs must be a positive integer number of seconds")
+                })?;
+                if value == 0 {
+                    return Err(meta.error("ttl_secs must be greater than zero"));
+                }
+                parsed.ttl_secs = Some(value);
                 return Ok(());
             }
             Err(meta.error("unknown struct attribute"))

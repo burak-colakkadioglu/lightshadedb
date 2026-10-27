@@ -18,7 +18,7 @@ use emit_write::{emit_delete, emit_insert, emit_update};
 pub use interface::generate_interface;
 use persist::{
     emit_admin_methods, emit_adopt, emit_engine_accessors, emit_key_struct, emit_maintenance,
-    emit_persistence_methods, emit_table_storage, emit_transaction_support,
+    emit_persistence_methods, emit_table_storage, emit_transaction_support, emit_ttl,
 };
 use plan::{build_plan, eq_key_fields, get_table, index_inner_fields, is_advanced_query};
 pub use plan::{schema_fingerprint, workload_fingerprint};
@@ -258,6 +258,8 @@ fn generate_library_impl(workload: &Workload, options: &GenerateOptions) -> Resu
     {
         emit_maintenance(&mut out, workload, &plan, table)?;
     }
+
+    emit_ttl(&mut out, workload)?;
 
     emit_transaction_support(&mut out, workload, &plan)?;
 

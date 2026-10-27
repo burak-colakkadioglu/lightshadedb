@@ -14,6 +14,9 @@ units, so read the unit column, not your instincts.
 | `LIGHTSHADE_MAX_WAL_BYTES` | `0` (unlimited) | un-checkpointed WAL cap → `QuotaKind::WalBytes` |
 | `LIGHTSHADE_SPILL_DIR` | system temp dir | spill directory; must exist if set, or startup fails |
 | `LIGHTSHADE_LOCK_TIMEOUT_MS` | engine default | how long a second writer waits for the lock |
+| `LIGHTSHADE_WAL_PREALLOC_BYTES` | 8 MiB | WAL preallocation segment in bytes; `0` disables preallocation |
+| `LIGHTSHADE_COMPRESSION` | off | `1`/`true`/`yes`/`on`/`rle`/`lz` compresses snapshot chunks and WAL records with the built-in codec |
+| `LIGHTSHADE_ENCRYPTION_KEY_FILE` | off | key file path for encryption at rest (32 raw bytes or 64 hex chars, `0600`, regular file) |
 
 ## Server
 
@@ -62,3 +65,20 @@ units, so read the unit column, not your instincts.
 `RUSTC` is honored when building interface binaries. None of these
 are API; they're listed so that when a script sets one, you know
 where to look.
+
+## Metrics
+
+In-process counters with no extra dependencies. Read them with
+`lightshadedb::metrics::snapshot()` for a `Snapshot` of `u64` values
+or `lightshadedb::metrics::exposition()` for Prometheus style text
+with one `name value` line per counter. Collection is always on.
+Tuning happens through the variables above.
+
+| Metric | Related env | Meaning |
+|---|---|---|
+| `lightshade_connections_total` | `LIGHTSHADE_MAX_CONNECTIONS`, `LIGHTSHADE_IDLE_TIMEOUT_MS`, `LIGHTSHADE_HANDSHAKE_TIMEOUT_MS` | accepted connections since process start |
+| `lightshade_group_commit_batches_total` | `LIGHTSHADE_GROUP_COMMIT_US` | group commit fsync batches run by the durability waiter |
+| `lightshade_wal_bytes_written_total` | `LIGHTSHADE_CHECKPOINT_BYTES`, `LIGHTSHADE_MAX_WAL_BYTES` | WAL bytes written since process start |
+| `lightshade_cache_hits_total` | `LIGHTSHADE_ROW_CACHE_BYTES` | read cache hits |
+| `lightshade_cache_misses_total` | `LIGHTSHADE_ROW_CACHE_BYTES` | read cache misses |
+| `lightshade_slow_queries_total` | `LIGHTSHADE_SLOW_MS`, `LIGHTSHADE_SLOW_LOG` | queries slower than the sampling threshold |

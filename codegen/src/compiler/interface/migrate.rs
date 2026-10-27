@@ -52,7 +52,7 @@ pub(crate) fn emit_migrate_plan(out: &mut String, workload: &Workload) -> Result
     );
     line(
         out,
-        "    if __ls_version != __LS_VERSION && __ls_version != __LS_PREVIOUS_VERSION && __ls_version != __LS_OLD_VERSION {",
+        "    if __ls_version != __LS_VERSION && __ls_version != __LS_PREVIOUS_VERSION && __ls_version != __LS_OLD_VERSION && __ls_version != __LS_ANCIENT_VERSION {",
     );
     line(
         out,
@@ -114,7 +114,7 @@ pub(crate) fn emit_migrate_plan(out: &mut String, workload: &Workload) -> Result
     line(out, "        while __ls_parsed < __ls_rows {");
     line(
         out,
-        "            __ls_read_chunk(&mut __ls_input, __ls_rows, &mut __ls_parsed).map_err(|error| error.to_string())?;",
+        "            __ls_read_chunk(&mut __ls_input, __ls_rows, &mut __ls_parsed, __ls_version).map_err(|error| error.to_string())?;",
     );
     line(out, "        }");
     line(out, "        __ls_stored.push((__ls_name, __ls_columns));");

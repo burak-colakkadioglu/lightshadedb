@@ -46,11 +46,20 @@ pub(crate) fn emit_insert(
     writeln!(out, "            return Ok(false);").unwrap();
     writeln!(out, "        }}").unwrap();
     writeln!(out, "        self.__ls_check_row_quota()?;").unwrap();
-    writeln!(out, "        let __row = {} {{", row_type(&table.name)).unwrap();
+    if table.ttl_secs.is_some() {
+        writeln!(out, "        let mut __row = {} {{", row_type(&table.name)).unwrap();
+    } else {
+        writeln!(out, "        let __row = {} {{", row_type(&table.name)).unwrap();
+    }
     for field in &table.fields {
         writeln!(out, "            {}: {},", field.name, field.name).unwrap();
     }
     writeln!(out, "        }};").unwrap();
+    if let Some(ttl) = table.ttl_secs {
+        writeln!(out, "        if __row.expires_at == 0 {{").unwrap();
+        writeln!(out, "            __row.expires_at = (__ls_now_millis().saturating_add({}u64.saturating_mul(1000))) as i64;", ttl).unwrap();
+        writeln!(out, "        }}").unwrap();
+    }
     writeln!(out, "        {}", effect_upsert_call(table, "__row")).unwrap();
     writeln!(out, "        self.__ls_finish_effects()?;").unwrap();
     writeln!(out, "        self.__ls_insert_{}(&__row);", table.name).unwrap();

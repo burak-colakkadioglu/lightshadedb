@@ -57,6 +57,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         let slot_contains = "self.slots.contains_key(&__ls_key)";
         let iter = format!("{}Iter", store);
         let values = format!("{}Values", store);
+        let is_ttl = table.ttl_secs.is_some();
 
         writeln!(out, "struct {store} {{").unwrap();
         writeln!(out, "    slots: {slot_type},").unwrap();
@@ -707,34 +708,84 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
             "        let __ls_shard = Self::__ls_cache_shard(&__ls_key);"
         )
         .unwrap();
-        writeln!(
-            out,
-            "        if let Some((row, _, _)) = self.cache[__ls_shard].read().unwrap().get(&__ls_key) {{"
-        )
-        .unwrap();
-        writeln!(out, "            return Some(row.clone());").unwrap();
-        writeln!(out, "        }}").unwrap();
-        writeln!(
-            out,
-            "        if let Some(row) = self.overflow.get(&__ls_key) {{"
-        )
-        .unwrap();
-        writeln!(out, "            return Some(row.clone());").unwrap();
-        writeln!(out, "        }}").unwrap();
-        writeln!(out, "        let slot = {slot_get};").unwrap();
-        writeln!(
-            out,
-            "        let row = self.__ls_read_slot(&__ls_key, slot);"
-        )
-        .unwrap();
-        writeln!(
-            out,
-            "        self.__ls_cache_put(key.clone(), row.clone(), slot.1.saturating_add(128));"
-        )
-        .unwrap();
-        writeln!(out, "        Some(row)").unwrap();
+        if is_ttl {
+            writeln!(out, "        if let Some((row, _, _)) = self.cache[__ls_shard].read().unwrap().get(&__ls_key) {{").unwrap();
+            writeln!(out, "            if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
+            writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(
+                out,
+                "        if let Some(row) = self.overflow.get(&__ls_key) {{"
+            )
+            .unwrap();
+            writeln!(out, "            if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
+            writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(out, "        let slot = {slot_get};").unwrap();
+            writeln!(
+                out,
+                "        let row = self.__ls_read_slot(&__ls_key, slot);"
+            )
+            .unwrap();
+            writeln!(out, "        if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
+            writeln!(out, "        self.__ls_cache_put(key.clone(), row.clone(), slot.1.saturating_add(128));").unwrap();
+            writeln!(out, "        Some(row)").unwrap();
+        } else {
+            writeln!(out, "        if let Some((row, _, _)) = self.cache[__ls_shard].read().unwrap().get(&__ls_key) {{").unwrap();
+            writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(
+                out,
+                "        if let Some(row) = self.overflow.get(&__ls_key) {{"
+            )
+            .unwrap();
+            writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(out, "        let slot = {slot_get};").unwrap();
+            writeln!(
+                out,
+                "        let row = self.__ls_read_slot(&__ls_key, slot);"
+            )
+            .unwrap();
+            writeln!(out, "        self.__ls_cache_put(key.clone(), row.clone(), slot.1.saturating_add(128));").unwrap();
+            writeln!(out, "        Some(row)").unwrap();
+        }
         writeln!(out, "    }}").unwrap();
         writeln!(out).unwrap();
+
+        if is_ttl {
+            writeln!(
+                out,
+                "    fn __ls_get_including_expired(&self, key: &{key}) -> Option<{row}> {{"
+            )
+            .unwrap();
+            writeln!(out, "        let __ls_key = {storage_from_ref};").unwrap();
+            writeln!(
+                out,
+                "        let __ls_shard = Self::__ls_cache_shard(&__ls_key);"
+            )
+            .unwrap();
+            writeln!(out, "        if let Some((row, _, _)) = self.cache[__ls_shard].read().unwrap().get(&__ls_key) {{").unwrap();
+            writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(
+                out,
+                "        if let Some(row) = self.overflow.get(&__ls_key) {{"
+            )
+            .unwrap();
+            writeln!(out, "            return Some(row.clone());").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(out, "        let slot = {slot_get};").unwrap();
+            writeln!(
+                out,
+                "        let row = self.__ls_read_slot(&__ls_key, slot);"
+            )
+            .unwrap();
+            writeln!(out, "        self.__ls_cache_put(key.clone(), row.clone(), slot.1.saturating_add(128));").unwrap();
+            writeln!(out, "        Some(row)").unwrap();
+            writeln!(out, "    }}").unwrap();
+            writeln!(out).unwrap();
+        }
 
         if primary_key.ty == Ty::Text {
             writeln!(
@@ -744,29 +795,52 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
             .unwrap();
             writeln!(out, "        let __ls_key = __LsText::from(key);").unwrap();
             writeln!(out, "        if !self.direct {{").unwrap();
-            writeln!(
-                out,
-                "            if let Some((row, _, _)) = self.cache[Self::__ls_cache_shard(&__ls_key)].read().unwrap().get(key) {{"
-            )
-            .unwrap();
-            writeln!(out, "                return Some(row.clone());").unwrap();
-            writeln!(out, "            }}").unwrap();
+            if is_ttl {
+                writeln!(out, "            if let Some((row, _, _)) = self.cache[Self::__ls_cache_shard(&__ls_key)].read().unwrap().get(key) {{").unwrap();
+                writeln!(out, "                if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
+                writeln!(out, "                return Some(row.clone());").unwrap();
+                writeln!(out, "            }}").unwrap();
+            } else {
+                writeln!(out, "            if let Some((row, _, _)) = self.cache[Self::__ls_cache_shard(&__ls_key)].read().unwrap().get(key) {{").unwrap();
+                writeln!(out, "                return Some(row.clone());").unwrap();
+                writeln!(out, "            }}").unwrap();
+            }
             writeln!(out, "        }}").unwrap();
-            writeln!(
-                out,
-                "        if let Some(row) = self.overflow.get(&__ls_key) {{"
-            )
-            .unwrap();
-            writeln!(out, "            return Some(row.clone());").unwrap();
-            writeln!(out, "        }}").unwrap();
-            writeln!(out, "        let slot = self.slots.get(&__ls_key)?;").unwrap();
-            writeln!(
-                out,
-                "        let row = self.__ls_read_slot(&__ls_key, slot);"
-            )
-            .unwrap();
-            writeln!(out, "        self.__ls_cache_put(key.to_string(), row.clone(), slot.1.saturating_add(128));").unwrap();
-            writeln!(out, "        Some(row)").unwrap();
+            if is_ttl {
+                writeln!(
+                    out,
+                    "        if let Some(row) = self.overflow.get(&__ls_key) {{"
+                )
+                .unwrap();
+                writeln!(out, "            if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
+                writeln!(out, "            return Some(row.clone());").unwrap();
+                writeln!(out, "        }}").unwrap();
+                writeln!(out, "        let slot = self.slots.get(&__ls_key)?;").unwrap();
+                writeln!(
+                    out,
+                    "        let row = self.__ls_read_slot(&__ls_key, slot);"
+                )
+                .unwrap();
+                writeln!(out, "        if row.expires_at != 0 && row.expires_at <= __ls_now_millis() as i64 {{ return None; }}").unwrap();
+                writeln!(out, "        self.__ls_cache_put(key.to_string(), row.clone(), slot.1.saturating_add(128));").unwrap();
+                writeln!(out, "        Some(row)").unwrap();
+            } else {
+                writeln!(
+                    out,
+                    "        if let Some(row) = self.overflow.get(&__ls_key) {{"
+                )
+                .unwrap();
+                writeln!(out, "            return Some(row.clone());").unwrap();
+                writeln!(out, "        }}").unwrap();
+                writeln!(out, "        let slot = self.slots.get(&__ls_key)?;").unwrap();
+                writeln!(
+                    out,
+                    "        let row = self.__ls_read_slot(&__ls_key, slot);"
+                )
+                .unwrap();
+                writeln!(out, "        self.__ls_cache_put(key.to_string(), row.clone(), slot.1.saturating_add(128));").unwrap();
+                writeln!(out, "        Some(row)").unwrap();
+            }
             writeln!(out, "    }}").unwrap();
             writeln!(out).unwrap();
         }
@@ -805,7 +879,15 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         )
         .unwrap();
         writeln!(out, "        let __ls_key = {storage_from_ref};").unwrap();
-        writeln!(out, "        let row = self.__ls_get(key)?;").unwrap();
+        if is_ttl {
+            writeln!(
+                out,
+                "        let row = self.__ls_get_including_expired(key)?;"
+            )
+            .unwrap();
+        } else {
+            writeln!(out, "        let row = self.__ls_get(key)?;").unwrap();
+        }
         writeln!(out, "        self.slots.remove(&__ls_key);").unwrap();
         writeln!(out, "        self.overflow.remove(&__ls_key);").unwrap();
         writeln!(
@@ -842,12 +924,16 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         .unwrap();
         writeln!(out, "    #[allow(clippy::ptr_arg)]").unwrap();
         writeln!(out, "    fn contains_key(&self, key: &{key}) -> bool {{").unwrap();
-        writeln!(out, "        let __ls_key = {storage_from_ref};").unwrap();
-        writeln!(
-            out,
-            "        {slot_contains} || self.overflow.contains_key(&__ls_key)"
-        )
-        .unwrap();
+        if is_ttl {
+            writeln!(out, "        self.__ls_get(key).is_some()").unwrap();
+        } else {
+            writeln!(out, "        let __ls_key = {storage_from_ref};").unwrap();
+            writeln!(
+                out,
+                "        {slot_contains} || self.overflow.contains_key(&__ls_key)"
+            )
+            .unwrap();
+        }
         writeln!(out, "    }}").unwrap();
         writeln!(
             out,
@@ -926,32 +1012,57 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         )
         .unwrap();
         writeln!(out, "        let __ls_start = {storage_from_start};").unwrap();
-        writeln!(out, "        let mut __ls_overflow: Vec<({storage_key}, &{row})> = self.overflow.iter().filter(|(key, _)| *key >= &__ls_start).map(|(key, row)| (key.clone(), row)).collect();").unwrap();
+        if is_ttl {
+            writeln!(out, "        let __ls_now = __ls_now_millis() as i64;").unwrap();
+            writeln!(out, "        let mut __ls_overflow: Vec<({storage_key}, &{row})> = self.overflow.iter().filter(|(key, row)| *key >= &__ls_start && (row.expires_at == 0 || row.expires_at > __ls_now)).map(|(key, row)| (key.clone(), row)).collect();").unwrap();
+        } else {
+            writeln!(out, "        let mut __ls_overflow: Vec<({storage_key}, &{row})> = self.overflow.iter().filter(|(key, _)| *key >= &__ls_start).map(|(key, row)| (key.clone(), row)).collect();").unwrap();
+        }
         writeln!(
             out,
             "        __ls_overflow.sort_by(|left, right| left.0.cmp(&right.0));"
         )
         .unwrap();
-        writeln!(
-            out,
-            "        self.slots.iter_from(&__ls_start).map(move |(key, packed)| {{"
-        )
-        .unwrap();
-        writeln!(out, "            if !self.direct {{").unwrap();
-        writeln!(
-            out,
-            "                if let Some((row, _, _)) = self.cache[Self::__ls_cache_shard(&key)].read().unwrap().get(&key) {{"
-        )
-        .unwrap();
-        writeln!(out, "                    return row.clone();").unwrap();
-        writeln!(out, "                }}").unwrap();
-        writeln!(out, "            }}").unwrap();
-        writeln!(out, "            self.__ls_read_packed(&key, packed)").unwrap();
-        writeln!(
-            out,
-            "        }}).chain(__ls_overflow.into_iter().map(|(_, row)| row.clone()))"
-        )
-        .unwrap();
+        if is_ttl {
+            writeln!(
+                out,
+                "        self.slots.iter_from(&__ls_start).filter_map(move |(key, packed)| {{"
+            )
+            .unwrap();
+            writeln!(out, "            if !self.direct {{").unwrap();
+            writeln!(out, "                if let Some((row, _, _)) = self.cache[Self::__ls_cache_shard(&key)].read().unwrap().get(&key) {{").unwrap();
+            writeln!(out, "                    if row.expires_at == 0 || row.expires_at > __ls_now {{ return Some(row.clone()); }} else {{ return None; }}").unwrap();
+            writeln!(out, "                }}").unwrap();
+            writeln!(out, "            }}").unwrap();
+            writeln!(
+                out,
+                "            let __ls_row = self.__ls_read_packed(&key, packed);"
+            )
+            .unwrap();
+            writeln!(out, "            if __ls_row.expires_at == 0 || __ls_row.expires_at > __ls_now {{ Some(__ls_row) }} else {{ None }}").unwrap();
+            writeln!(
+                out,
+                "        }}).chain(__ls_overflow.into_iter().map(|(_, row)| row.clone()))"
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                out,
+                "        self.slots.iter_from(&__ls_start).map(move |(key, packed)| {{"
+            )
+            .unwrap();
+            writeln!(out, "            if !self.direct {{").unwrap();
+            writeln!(out, "                if let Some((row, _, _)) = self.cache[Self::__ls_cache_shard(&key)].read().unwrap().get(&key) {{").unwrap();
+            writeln!(out, "                    return row.clone();").unwrap();
+            writeln!(out, "                }}").unwrap();
+            writeln!(out, "            }}").unwrap();
+            writeln!(out, "            self.__ls_read_packed(&key, packed)").unwrap();
+            writeln!(
+                out,
+                "        }}).chain(__ls_overflow.into_iter().map(|(_, row)| row.clone()))"
+            )
+            .unwrap();
+        }
         writeln!(out, "    }}").unwrap();
         writeln!(
             out,
@@ -964,6 +1075,42 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         )
         .unwrap();
         writeln!(out, "    fn __ls_spill_bytes(&self) -> u64 {{ self.spill_len.load(std::sync::atomic::Ordering::Relaxed) }}").unwrap();
+        if is_ttl {
+            writeln!(
+                out,
+                "    fn __ls_expired_keys(&self, __ls_now: u64) -> Vec<{key}> {{"
+            )
+            .unwrap();
+            writeln!(out, "        let __ls_cutoff = __ls_now as i64;").unwrap();
+            writeln!(out, "        let mut __ls_out: Vec<{key}> = Vec::new();").unwrap();
+            writeln!(out, "        for (key, packed) in self.slots.iter() {{").unwrap();
+            writeln!(
+                out,
+                "            let __ls_row = self.__ls_read_packed(&key, packed);"
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "            if __ls_row.expires_at != 0 && __ls_row.expires_at <= __ls_cutoff {{"
+            )
+            .unwrap();
+            writeln!(out, "                let key = {storage_to_raw};").unwrap();
+            writeln!(out, "                __ls_out.push(key);").unwrap();
+            writeln!(out, "            }}").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(out, "        for (key, row) in self.overflow.iter() {{").unwrap();
+            writeln!(
+                out,
+                "            if row.expires_at != 0 && row.expires_at <= __ls_cutoff {{"
+            )
+            .unwrap();
+            writeln!(out, "                let key = {storage_to_raw};").unwrap();
+            writeln!(out, "                __ls_out.push(key);").unwrap();
+            writeln!(out, "            }}").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(out, "        __ls_out").unwrap();
+            writeln!(out, "    }}").unwrap();
+        }
         writeln!(out, "}}").unwrap();
         writeln!(out).unwrap();
 
@@ -1034,21 +1181,49 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "impl<'a> Iterator for {values}<'a> {{").unwrap();
         writeln!(out, "    type Item = {row};").unwrap();
         writeln!(out, "    fn next(&mut self) -> Option<Self::Item> {{").unwrap();
-        writeln!(out, "        match self.slots.next() {{").unwrap();
-        writeln!(out, "            Some((key, packed)) => {{").unwrap();
-        writeln!(
-            out,
-            "                let __ls_row = if !self.table.direct {{"
-        )
-        .unwrap();
-        writeln!(out, "                    self.table.cache[{store}::__ls_cache_shard(&key)].read().unwrap().get(&key).map(|(row, _, _)| row.clone())").unwrap();
-        writeln!(out, "                }} else {{").unwrap();
-        writeln!(out, "                    None").unwrap();
-        writeln!(out, "                }};").unwrap();
-        writeln!(out, "                Some(__ls_row.unwrap_or_else(|| self.table.__ls_read_packed(&key, packed)))").unwrap();
-        writeln!(out, "            }}").unwrap();
-        writeln!(out, "            None => self.overflow.next().cloned(),").unwrap();
-        writeln!(out, "        }}").unwrap();
+        if is_ttl {
+            writeln!(out, "        let __ls_now = __ls_now_millis() as i64;").unwrap();
+            writeln!(out, "        loop {{").unwrap();
+            writeln!(out, "            match self.slots.next() {{").unwrap();
+            writeln!(out, "                Some((key, packed)) => {{").unwrap();
+            writeln!(
+                out,
+                "                    let __ls_cached = if !self.table.direct {{"
+            )
+            .unwrap();
+            writeln!(out, "                        self.table.cache[{store}::__ls_cache_shard(&key)].read().unwrap().get(&key).map(|(row, _, _)| row.clone())").unwrap();
+            writeln!(out, "                    }} else {{ None }};").unwrap();
+            writeln!(out, "                    let __ls_row = __ls_cached.unwrap_or_else(|| self.table.__ls_read_packed(&key, packed));").unwrap();
+            writeln!(out, "                    if __ls_row.expires_at != 0 && __ls_row.expires_at <= __ls_now {{ continue; }}").unwrap();
+            writeln!(out, "                    return Some(__ls_row);").unwrap();
+            writeln!(out, "                }}").unwrap();
+            writeln!(out, "                None => break,").unwrap();
+            writeln!(out, "            }}").unwrap();
+            writeln!(out, "        }}").unwrap();
+            writeln!(out, "        loop {{").unwrap();
+            writeln!(out, "            match self.overflow.next() {{").unwrap();
+            writeln!(out, "                Some(row) => {{").unwrap();
+            writeln!(out, "                    if row.expires_at != 0 && row.expires_at <= __ls_now {{ continue; }}").unwrap();
+            writeln!(out, "                    return Some(row.clone());").unwrap();
+            writeln!(out, "                }}").unwrap();
+            writeln!(out, "                None => return None,").unwrap();
+            writeln!(out, "            }}").unwrap();
+            writeln!(out, "        }}").unwrap();
+        } else {
+            writeln!(out, "        match self.slots.next() {{").unwrap();
+            writeln!(out, "            Some((key, packed)) => {{").unwrap();
+            writeln!(
+                out,
+                "                let __ls_row = if !self.table.direct {{"
+            )
+            .unwrap();
+            writeln!(out, "                    self.table.cache[{store}::__ls_cache_shard(&key)].read().unwrap().get(&key).map(|(row, _, _)| row.clone())").unwrap();
+            writeln!(out, "                }} else {{ None }};").unwrap();
+            writeln!(out, "                Some(__ls_row.unwrap_or_else(|| self.table.__ls_read_packed(&key, packed)))").unwrap();
+            writeln!(out, "            }}").unwrap();
+            writeln!(out, "            None => self.overflow.next().cloned(),").unwrap();
+            writeln!(out, "        }}").unwrap();
+        }
         writeln!(out, "    }}").unwrap();
         writeln!(out, "}}").unwrap();
         writeln!(out).unwrap();

@@ -37,6 +37,20 @@ The compiler enforces these and names the offender every time:
 - No duplicate tables, fields, or operations; no unknown fields in
   queries; primary keys can't carry defaults.
 
+## Time to live
+
+`#[lightshadedb(ttl_secs = 3600)]` on a stored table turns it into an
+expiring table. The table must carry a non-nullable
+`expires_at: i64` field holding absolute milliseconds, and that field
+cannot be the primary key. Inserts without an explicit `expires_at`
+get one stamped automatically (`now + ttl_secs`); reads skip expired
+rows; checkpoints and `purge_expired()` delete them as ordinary
+WAL-recorded deletes, so expiry survives crashes and the deletes
+consume WAL quota like any other write. Dumps only contain visible
+rows, carrying their stored `expires_at` values as-is: restoring a
+dump does not extend lifetimes, and already-expired rows simply stay
+out.
+
 ## Field types
 
 | Rust type | Storage | Notes |
@@ -84,9 +98,10 @@ count.
 
 Joins only accept `eq_field`. `ne_field` exists on field handles but
 the lowering rejects anything but equi-joins, because only equality
-preserves the index story. Joins over nullable keys are rejected for
-the same reason: nullability would make the predicate three-valued
-and the compiler refuses to guess.
+preserves the index story. Conjoin several `eq_field` pairs inside
+one `join_on` for a multi-key join. Joins over nullable keys use
+three-valued equijoin semantics (`NULL` never matches) and always
+run as a nested loop, never as a point lookup.
 
 ## What gets generated
 

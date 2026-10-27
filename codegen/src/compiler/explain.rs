@@ -599,7 +599,7 @@ fn describe_advanced(
         if pk_join_key(join, depth, &sources)?.is_some() {
             details.push(format!(
                 "join {joined_name}: primary-key point lookup ({} = {})",
-                join.left, join.right
+                join.keys[0].left, join.keys[0].right
             ));
         } else if let Some(index) = plan.advanced_join.get(&(operation.name.clone(), depth)) {
             let spec = &plan.indexes[*index];
@@ -607,8 +607,18 @@ fn describe_advanced(
                 "join {joined_name}: index lookup via Idx{index} on ({})",
                 spec.eq.join(", ")
             ));
-        } else {
+        } else if join.keys.len() == 1 {
             details.push(format!("join {joined_name}: nested loop with filter"));
+        } else {
+            let pairs = join
+                .keys
+                .iter()
+                .map(|key| format!("{} = {}", key.left, key.right))
+                .collect::<Vec<_>>()
+                .join(", ");
+            details.push(format!(
+                "join {joined_name}: nested loop with filter ({pairs})"
+            ));
         }
     }
     if !group_by.is_empty() {

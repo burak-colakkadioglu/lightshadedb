@@ -377,9 +377,16 @@ impl Database {
                 for row in &joined_rows {
                     let mut candidate = tuple.clone();
                     candidate.extend(row.iter().cloned());
-                    let left = eval_field_value(&join.left, &sources, &candidate)?;
-                    let right = eval_field_value(&join.right, &sources, &candidate)?;
-                    if left == right {
+                    let mut matched = true;
+                    for key in &join.keys {
+                        let left = eval_field_value(&key.left, &sources, &candidate)?;
+                        let right = eval_field_value(&key.right, &sources, &candidate)?;
+                        if left != right {
+                            matched = false;
+                            break;
+                        }
+                    }
+                    if matched {
                         next.push(candidate);
                     }
                 }

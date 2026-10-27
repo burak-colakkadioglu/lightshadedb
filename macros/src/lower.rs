@@ -69,6 +69,7 @@ pub fn lower(
         workload.tables.push(lightshadedb_codegen::ir::Table {
             name: table.db_name.clone(),
             fields,
+            ttl_secs: table.ttl_secs,
         });
         let crud = crud_names(lowered_tables.len());
         lowered_tables.push(LoweredTable {
@@ -91,6 +92,7 @@ pub fn lower(
         let db_name = snake_case(&projection.ident.to_string());
         workload.tables.push(lightshadedb_codegen::ir::Table {
             name: db_name.clone(),
+            ttl_secs: None,
             fields: projection
                 .fields
                 .iter()
@@ -546,23 +548,6 @@ fn lower_projection_query(
     })
 }
 
-fn reject_nullable_field(
-    span: Span,
-    struct_ident: &syn::Ident,
-    field: &crate::model::ModelField,
-) -> syn::Result<()> {
-    if field.nullable {
-        return Err(syn::Error::new(
-            span,
-            format!(
-                "`{}::{}` is nullable; queries over nullable fields are not supported yet (insert/get/scan/count/patch work today)",
-                struct_ident, field.ident,
-            ),
-        ));
-    }
-    Ok(())
-}
-
 fn resolve_field_ref(
     expr: &RustExpr,
     tables: &[Table],
@@ -666,69 +651,89 @@ fn lower_joins(
             .args
             .first()
             .ok_or_else(|| syn::Error::new(call.span(), "`join_on` needs an equality predicate"))?;
-        let RustExpr::MethodCall(comparison) = predicate else {
-            return Err(syn::Error::new(
-                predicate.span(),
-                "`join_on` needs `Field::eq_field(Field)`",
-            ));
-        };
-        if comparison.method != "eq_field" {
-            return Err(syn::Error::new(
-                comparison.method.span(),
-                "inner joins use `Field::eq_field(Field)`",
-            ));
-        }
-        let (left_table, left_field_ident) = crate::model::field_path(&comparison.receiver)
-            .ok_or_else(|| {
-                syn::Error::new(comparison.receiver.span(), "expected a field handle")
+        let mut keys = Vec::new();
+        for leaf in split_join_conjunction(predicate) {
+            let RustExpr::MethodCall(comparison) = leaf else {
+                return Err(syn::Error::new(
+                    leaf.span(),
+                    "`join_on` needs `Field::eq_field(Field)`",
+                ));
+            };
+            if comparison.method != "eq_field" {
+                return Err(syn::Error::new(
+                    comparison.method.span(),
+                    "inner joins use `Field::eq_field(Field)`",
+                ));
+            }
+            let (left_table, left_field_ident) = crate::model::field_path(&comparison.receiver)
+                .ok_or_else(|| {
+                    syn::Error::new(comparison.receiver.span(), "expected a field handle")
+                })?;
+            let right_expr = comparison.args.first().ok_or_else(|| {
+                syn::Error::new(comparison.span(), "`eq_field` needs a field argument")
             })?;
-        let right_expr = comparison.args.first().ok_or_else(|| {
-            syn::Error::new(comparison.span(), "`eq_field` needs a field argument")
-        })?;
-        let (right_table, right_field_ident) = crate::model::field_path(right_expr)
-            .ok_or_else(|| syn::Error::new(right_expr.span(), "expected a field handle"))?;
-        let left_model = tables
-            .iter()
-            .find(|table| table.ident == left_table)
-            .ok_or_else(|| syn::Error::new(comparison.receiver.span(), "unknown table in join"))?;
-        let right_model = tables
-            .iter()
-            .find(|table| table.ident == right_table)
-            .ok_or_else(|| syn::Error::new(right_expr.span(), "unknown table in join"))?;
-        let left_field = left_model
-            .fields
-            .iter()
-            .find(|field| field.ident == left_field_ident)
-            .ok_or_else(|| syn::Error::new(comparison.receiver.span(), "unknown field in join"))?;
-        reject_nullable_field(comparison.receiver.span(), &left_model.ident, left_field)?;
-        let left_ty = left_field.ir;
-        let right_field = right_model
-            .fields
-            .iter()
-            .find(|field| field.ident == right_field_ident)
-            .ok_or_else(|| syn::Error::new(right_expr.span(), "unknown field in join"))?;
-        reject_nullable_field(right_expr.span(), &right_model.ident, right_field)?;
-        let right_ty = right_field.ir;
-        if left_ty != right_ty {
-            return Err(syn::Error::new(
-                predicate.span(),
-                "join fields have different types",
-            ));
+            let (right_table, right_field_ident) = crate::model::field_path(right_expr)
+                .ok_or_else(|| syn::Error::new(right_expr.span(), "expected a field handle"))?;
+            let left_model = tables
+                .iter()
+                .find(|table| table.ident == left_table)
+                .ok_or_else(|| {
+                    syn::Error::new(comparison.receiver.span(), "unknown table in join")
+                })?;
+            let right_model = tables
+                .iter()
+                .find(|table| table.ident == right_table)
+                .ok_or_else(|| syn::Error::new(right_expr.span(), "unknown table in join"))?;
+            let left_field = left_model
+                .fields
+                .iter()
+                .find(|field| field.ident == left_field_ident)
+                .ok_or_else(|| {
+                    syn::Error::new(comparison.receiver.span(), "unknown field in join")
+                })?;
+            let left_ty = left_field.ir;
+            let right_field = right_model
+                .fields
+                .iter()
+                .find(|field| field.ident == right_field_ident)
+                .ok_or_else(|| syn::Error::new(right_expr.span(), "unknown field in join"))?;
+            let right_ty = right_field.ir;
+            if left_ty != right_ty {
+                return Err(syn::Error::new(
+                    leaf.span(),
+                    "join fields have different types",
+                ));
+            }
+            keys.push(lightshadedb_codegen::ir::JoinKey {
+                left: lightshadedb_codegen::ir::FieldRef {
+                    qualifier: Some(left_model.db_name.clone()),
+                    field: left_field_ident.to_string(),
+                },
+                right: lightshadedb_codegen::ir::FieldRef {
+                    qualifier: Some(right_model.db_name.clone()),
+                    field: right_field_ident.to_string(),
+                },
+            });
         }
         joins.push(lightshadedb_codegen::ir::Join {
             table: joined.db_name.clone(),
             alias: None,
-            left: lightshadedb_codegen::ir::FieldRef {
-                qualifier: Some(left_model.db_name.clone()),
-                field: left_field_ident.to_string(),
-            },
-            right: lightshadedb_codegen::ir::FieldRef {
-                qualifier: Some(right_model.db_name.clone()),
-                field: right_field_ident.to_string(),
-            },
+            keys,
         });
     }
     Ok(joins)
+}
+
+fn split_join_conjunction(predicate: &RustExpr) -> Vec<&RustExpr> {
+    match predicate {
+        RustExpr::Paren(paren) => split_join_conjunction(&paren.expr),
+        RustExpr::Binary(binary) if matches!(binary.op, BinOp::BitAnd(_) | BinOp::And(_)) => {
+            let mut leaves = split_join_conjunction(&binary.left);
+            leaves.extend(split_join_conjunction(&binary.right));
+            leaves
+        }
+        _ => vec![predicate],
+    }
 }
 
 fn lower_select(

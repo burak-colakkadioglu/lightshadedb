@@ -10,15 +10,15 @@ members = [
 ]
 
 [workspace.package]
-version = "2.1.2"
+version = "2.2.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/burak-colakkadioglu/lightshadedb"
 
 [workspace.dependencies]
-lightshadedb = { path = ".", version = "2.1.2" }
-lightshadedb-codegen = { path = "codegen", version = "2.1.2" }
-lightshadedb-macros = { path = "macros", version = "2.1.2" }
+lightshadedb = { path = ".", version = "2.2.0" }
+lightshadedb-codegen = { path = "codegen", version = "2.2.0" }
+lightshadedb-macros = { path = "macros", version = "2.2.0" }
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
 syn = { version = "2.0.119", features = ["full", "extra-traits"] }

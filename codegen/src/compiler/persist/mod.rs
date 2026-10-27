@@ -4,12 +4,14 @@ mod replay;
 mod snapshot;
 mod storage;
 mod table_storage;
+mod ttl;
 
 pub(crate) use admin::*;
 pub(crate) use maintenance::*;
 pub(crate) use replay::*;
 pub(crate) use storage::*;
 pub(crate) use table_storage::*;
+pub(crate) use ttl::*;
 
 use crate::ir::*;
 use replay::{emit_replay, emit_replay_effects};

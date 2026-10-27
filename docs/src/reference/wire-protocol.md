@@ -1,9 +1,11 @@
-# Wire protocol (LSRP v5)
+# Wire protocol (LSRP v6)
 
 LSRP connects generated clients to generated servers over TCP or Unix
 sockets. Version 5 adds the requested database name to the handshake,
 so one listener can serve many databases without one handshake per
-tenant.
+tenant. Version 6 adds two requests for follower tailing (`WalMeta`,
+`WalChunk`); servers accept both 5 and 6, and plain clients never
+need 6.
 
 ## Framing
 
@@ -30,13 +32,18 @@ Unknown database names fail identically to bad credentials
 
 ## Requests
 
-One request, one response. Kinds are tagged `0..=3`: `Operation`
+One request, one response. Kinds are tagged `0..=5`: `Operation`
 (carries index plus typed parameters), `Begin`, `Commit`,
-`Rollback`. Non-operation requests carry no index and no parameters.
-The encoder omits them. Operation indexes are positions in the
+`Rollback`, `WalMeta` (no parameters: primary answers schema
+fingerprint, LSN, and valid WAL length in bytes), `WalChunk` (takes u64 offset and
+length, answers the raw WAL bytes). Non-operation requests carry no
+index; `WalMeta` and `WalChunk` carry parameters. The encoder omits
+them otherwise. Operation indexes are positions in the
 workload's operation table, not names: renaming an operation without
 rebuilding both sides breaks the pairing, which is why client and
-server builds pin the same workload fingerprint.
+server builds pin the same workload fingerprint. Follower tailing
+requires version 6 on both sides; a version 5 peer gets a clear
+`Protocol` error instead of a silent mismatch.
 
 ## Values
 

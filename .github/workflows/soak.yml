@@ -1,0 +1,53 @@
+name: Soak
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Soak duration in seconds
+        default: "3600"
+        type: string
+      readers:
+        description: Concurrent readers
+        default: "4"
+        type: string
+      writers:
+        description: Concurrent writers
+        default: "16"
+        type: string
+
+run-name: soak ${{ inputs.seconds || '3600' }}s readers=${{ inputs.readers || '4' }} writers=${{ inputs.writers || '16' }}
+
+jobs:
+  soak:
+    name: soak (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.0
+      - name: Build release binary
+        run: cargo build --release -p lightshadedb --bin lightshade
+      - name: Run soak
+        shell: bash
+        env:
+          LIGHTSHADE_SOAK_SECONDS: ${{ inputs.seconds || '3600' }}
+          LIGHTSHADE_SOAK_READERS: ${{ inputs.readers || '4' }}
+          LIGHTSHADE_SOAK_WRITERS: ${{ inputs.writers || '16' }}
+        run: |
+          mkdir -p soak-logs
+          scripts/soak.sh 2>&1 | tee "soak-logs/soak-${{ matrix.os }}.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soak-${{ matrix.os }}
+          path: soak-logs/
+          retention-days: 90

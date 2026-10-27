@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const MAGIC: [u8; 4] = *b"LSRP";
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
+pub const MIN_VERSION: u32 = 5;
 pub const MAX_FRAME: usize = 256 * 1024 * 1024;
 pub const MAX_HANDSHAKE: usize = 64 * 1024;
 
@@ -511,6 +512,8 @@ pub enum RequestKind {
     Begin,
     Commit,
     Rollback,
+    WalMeta,
+    WalChunk,
 }
 
 impl RequestKind {
@@ -520,6 +523,8 @@ impl RequestKind {
             Self::Begin => 1,
             Self::Commit => 2,
             Self::Rollback => 3,
+            Self::WalMeta => 4,
+            Self::WalChunk => 5,
         }
     }
 
@@ -529,8 +534,14 @@ impl RequestKind {
             1 => Self::Begin,
             2 => Self::Commit,
             3 => Self::Rollback,
+            4 => Self::WalMeta,
+            5 => Self::WalChunk,
             _ => return None,
         })
+    }
+
+    pub fn carries_payload(self) -> bool {
+        matches!(self, Self::Operation | Self::WalMeta | Self::WalChunk)
     }
 }
 
@@ -552,7 +563,7 @@ pub fn read_request(stream: &mut Stream) -> Result<(RequestKind, u32, Vec<Value>
     let kind = RequestKind::from_tag(tag).ok_or_else(|| Error::Protocol {
         reason: format!("unknown request kind {tag}"),
     })?;
-    if kind == RequestKind::Operation {
+    if kind.carries_payload() {
         let index = get_u32(&mut input)?;
         let params = decode_values(&mut input)?;
         Ok((kind, index, params))
@@ -714,7 +725,7 @@ pub fn decode_handshake_response(frame: &[u8]) -> Result<()> {
 pub fn encode_request(kind: RequestKind, index: u32, params: &[Value]) -> Vec<u8> {
     let mut payload = Vec::new();
     payload.push(kind.tag());
-    if kind == RequestKind::Operation {
+    if kind.carries_payload() {
         put_u32(&mut payload, index);
         encode_values(params, &mut payload);
     }
@@ -747,6 +758,7 @@ pub struct Hello {
     pub database: String,
     pub id: String,
     pub secret: Secret,
+    pub version: u32,
 }
 
 pub fn read_hello(stream: &mut Stream) -> Result<Hello> {
@@ -763,7 +775,7 @@ pub fn read_hello(stream: &mut Stream) -> Result<Hello> {
         });
     }
     let version = u32::from_le_bytes(read_array(&mut input)?);
-    if version != VERSION {
+    if version != VERSION && version != MIN_VERSION {
         return Err(Error::Protocol {
             reason: format!("unsupported protocol version {version}"),
         });
@@ -782,6 +794,7 @@ pub fn read_hello(stream: &mut Stream) -> Result<Hello> {
         database,
         id,
         secret,
+        version,
     })
 }
 
@@ -806,9 +819,10 @@ pub fn server_handshake(
     stream: &mut Stream,
     workload: u64,
     credentials: &Credentials,
-) -> Result<SessionRole> {
+) -> Result<(SessionRole, u32)> {
     let hello = read_hello(stream)?;
-    authenticate(&hello, workload, credentials)
+    let role = authenticate(&hello, workload, credentials)?;
+    Ok((role, hello.version))
 }
 
 pub fn write_handshake_error(stream: &mut Stream, error: &Error) -> Result<()> {

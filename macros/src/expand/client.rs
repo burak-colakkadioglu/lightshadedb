@@ -818,6 +818,148 @@ pub(crate) fn client_wrapper(
     }
 }
 
+pub(crate) fn follower_wrapper(
+    schema: &Schema,
+    lowered: &LoweredSchema,
+    fingerprint: u64,
+) -> TokenStream {
+    let _ = (schema, lowered);
+    quote! {
+        #[cfg(all(feature = "embedded", feature = "client"))]
+        pub struct Follower {
+            db: Db,
+            path: ::std::path::PathBuf,
+            endpoint: ::lightshadedb::ClientEndpoint,
+            options: ::lightshadedb::ClientOptions,
+        }
+
+        #[cfg(all(feature = "embedded", feature = "client"))]
+        impl Follower {
+            pub fn open(
+                path: impl AsRef<::std::path::Path>,
+                endpoint: ::lightshadedb::ClientEndpoint,
+                options: ::lightshadedb::ClientOptions,
+            ) -> ::lightshadedb::Result<Self> {
+                let path = path.as_ref().to_path_buf();
+                let mut __ls_options = ::lightshadedb::OpenOptions::default();
+                __ls_options.create = true;
+                let db = match Db::open_read_only(&path) {
+                    ::std::result::Result::Ok(db) => db,
+                    ::std::result::Result::Err(_) => {
+                        let mut fresh = Db::open_with(&path, __ls_options)?;
+                        fresh.checkpoint()?;
+                        drop(fresh);
+                        Db::open_read_only(&path)?
+                    }
+                };
+                ::std::result::Result::Ok(Self {
+                    db,
+                    path,
+                    endpoint,
+                    options,
+                })
+            }
+
+            pub fn lsn(&self) -> u64 {
+                self.db.lsn()
+            }
+
+            pub fn handle(&self) -> &Db {
+                &self.db
+            }
+
+            pub fn sync_once(&mut self) -> ::lightshadedb::Result<u64> {
+                let (mut stream, _) = ::lightshadedb::wire::connect(
+                    &self.endpoint,
+                    self.options.connect_timeout,
+                    self.options.io_timeout,
+                )?;
+                ::lightshadedb::wire::client_handshake(
+                    &mut stream,
+                    #fingerprint,
+                    &self.options.credentials,
+                    self.endpoint.database(),
+                )?;
+                let values = ::lightshadedb::wire::request(
+                    &mut stream,
+                    ::lightshadedb::wire::RequestKind::WalMeta,
+                    0,
+                    &[],
+                )?;
+                let remote_fp = ::lightshadedb::wire::as_u64(
+                    ::lightshadedb::wire::param(&values, 0)?,
+                )?;
+                let remote_lsn = ::lightshadedb::wire::as_u64(
+                    ::lightshadedb::wire::param(&values, 1)?,
+                )?;
+                let remote_len = ::lightshadedb::wire::as_u64(
+                    ::lightshadedb::wire::param(&values, 2)?,
+                )?;
+                if remote_fp != #fingerprint {
+                    return ::std::result::Result::Err(::lightshadedb::Error::Protocol {
+                        reason: "primary schema does not match follower".to_string(),
+                    });
+                }
+                let mut wal_name = self.path.as_os_str().to_os_string();
+                wal_name.push(".wal");
+                let wal_path = ::std::path::PathBuf::from(wal_name);
+                if remote_lsn <= self.db.lsn() {
+                    return ::std::result::Result::Ok(self.db.lsn());
+                }
+                {
+                    use ::std::io::Write as _;
+                    let mut file = ::std::fs::OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .create(true)
+                        .truncate(true)
+                        .open(&wal_path)
+                        .map_err(|error| {
+                            ::lightshadedb::Error::io("opening follower wal", error)
+                        })?;
+                    let mut offset = 0u64;
+                    while offset < remote_len {
+                        let want = (remote_len - offset).min(64 * 1024);
+                        let chunk = ::lightshadedb::wire::request(
+                            &mut stream,
+                            ::lightshadedb::wire::RequestKind::WalChunk,
+                            0,
+                            &[
+                                ::lightshadedb::table::Value::U64(offset),
+                                ::lightshadedb::table::Value::U64(want),
+                            ],
+                        )?;
+                        let bytes = ::lightshadedb::wire::as_bytes(
+                            ::lightshadedb::wire::param(&chunk, 0)?,
+                        )?;
+                        if bytes.is_empty() {
+                            break;
+                        }
+                        file.write_all(&bytes).map_err(|error| {
+                            ::lightshadedb::Error::io("appending follower wal", error)
+                        })?;
+                        offset += bytes.len() as u64;
+                        if (bytes.len() as u64) < want {
+                            break;
+                        }
+                    }
+                    file.sync_data().map_err(|error| {
+                        ::lightshadedb::Error::io("syncing follower wal", error)
+                    })?;
+                }
+                let fresh = Db::open_read_only(&self.path)?;
+                self.db = fresh;
+                ::std::result::Result::Ok(self.db.lsn())
+            }
+
+            pub fn promote(self) -> ::lightshadedb::Result<Db> {
+                drop(self.db);
+                Db::open(&self.path)
+            }
+        }
+    }
+}
+
 pub(crate) fn async_client_wrapper(
     schema: &Schema,
     lowered: &LoweredSchema,

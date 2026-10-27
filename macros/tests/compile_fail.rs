@@ -466,41 +466,6 @@ fn nullable_option_params_are_rejected() {
 }
 
 #[test]
-fn joins_over_nullable_columns_are_gated() {
-    check_case(
-        "nullable-join",
-        r#"use lightshadedb::prelude::*;
-
-    pub struct Author {
-        #[lightshadedb(primary_key)]
-        pub id: i64,
-        pub nick: Option<String>,
-    }
-
-    pub struct Book {
-        #[lightshadedb(primary_key)]
-        pub id: i64,
-        pub author_nick: Option<String>,
-    }
-
-    pub struct Row {
-        pub id: i64,
-    }
-
-    #[lightshadedb::operations]
-    pub trait Joins {
-        #[lightshadedb::query(
-            from = Author,
-            joins = (Book.join_on(Book::author_nick.eq_field(Author::nick)),),
-            select = Row::select().id(Author::id.select()),
-        )]
-        fn books(&self) -> Result<Vec<Row>>;
-    }"#,
-        "nullable",
-    );
-}
-
-#[test]
 fn comparisons_against_none_are_rejected() {
     check_case(
         "none-comparison",

@@ -122,7 +122,29 @@ fn parse_table(
     if !after.trim().is_empty() {
         return Err(ParseError::new(header.no, "unexpected text after `{`"));
     }
-    let name = parse_ident(name.trim()).map_err(|message| ParseError::new(header.no, message))?;
+    let parts: Vec<&str> = name.split_whitespace().collect();
+    let (table_name, ttl_secs) = match parts.as_slice() {
+        [table] => (*table, None),
+        [table, ttl_keyword, secs] if *ttl_keyword == "ttl" => {
+            let parsed: u64 = secs.parse().map_err(|_| {
+                ParseError::new(
+                    header.no,
+                    "ttl must be a positive integer number of seconds",
+                )
+            })?;
+            if parsed == 0 {
+                return Err(ParseError::new(header.no, "ttl must be greater than zero"));
+            }
+            (*table, Some(parsed))
+        }
+        _ => {
+            return Err(ParseError::new(
+                header.no,
+                "expected `table <name> [ttl <secs>] {`",
+            ));
+        }
+    };
+    let name = parse_ident(table_name).map_err(|message| ParseError::new(header.no, message))?;
 
     let mut fields = Vec::new();
     loop {
@@ -138,7 +160,11 @@ fn parse_table(
         fields.push(parse_field(line)?);
     }
 
-    workload.tables.push(Table { name, fields });
+    workload.tables.push(Table {
+        name,
+        fields,
+        ttl_secs,
+    });
     Ok(())
 }
 
@@ -602,8 +628,10 @@ fn parse_join(text: &str, line: usize) -> Result<Join, ParseError> {
     Ok(Join {
         table,
         alias,
-        left: parse_field_ref(left, line)?,
-        right: parse_field_ref(right, line)?,
+        keys: vec![JoinKey {
+            left: parse_field_ref(left, line)?,
+            right: parse_field_ref(right, line)?,
+        }],
     })
 }
 
@@ -1319,8 +1347,11 @@ mod tests {
                 assert_eq!(joins.len(), 1);
                 assert_eq!(joins[0].table, "inboxes");
                 assert_eq!(joins[0].alias.as_deref(), Some("i"));
-                assert_eq!(joins[0].left, FieldRef::parse("m.inbox_id").unwrap());
-                assert_eq!(joins[0].right, FieldRef::parse("i.id").unwrap());
+                assert_eq!(
+                    joins[0].keys[0].left,
+                    FieldRef::parse("m.inbox_id").unwrap()
+                );
+                assert_eq!(joins[0].keys[0].right, FieldRef::parse("i.id").unwrap());
                 assert_eq!(select.len(), 5);
                 assert_eq!(select[0].alias, "owner");
                 assert!(matches!(

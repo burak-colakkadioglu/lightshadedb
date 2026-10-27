@@ -319,12 +319,27 @@ pub(crate) fn run_limited(
     mode: &str,
     database: &std::path::Path,
 ) -> std::process::Output {
-    std::process::Command::new("sh")
+    run_limited_env(binary, mode, database, &[])
+}
+
+#[cfg(unix)]
+pub(crate) fn run_limited_env(
+    binary: &std::path::Path,
+    mode: &str,
+    database: &std::path::Path,
+    envs: &[(&str, &str)],
+) -> std::process::Output {
+    let mut command = std::process::Command::new("sh");
+    command
         .arg("-c")
         .arg("trap '' XFSZ; ulimit -f 8; exec \"$0\" \"$@\"")
         .arg(binary)
         .arg(mode)
-        .arg(database)
+        .arg(database);
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    command
         .output()
         .expect("failed to run limited generated binary")
 }

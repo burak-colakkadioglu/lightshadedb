@@ -56,6 +56,13 @@ all green, or the tree isn't.
   half-applied write. Embedded code uses `&mut` methods plus the
   `Backend::transaction` closure instead
   (same atomicity, no wrapper type).
+- **`Follower`**: a read-only tailing handle (`embedded` **and**
+  `client` together). `Follower::open(path, endpoint, options)`
+  replays the local WAL, `sync_once()` copies the primary's
+  un-checkpointed WAL over `WalMeta` / `WalChunk` and reopens
+  read-only at the new LSN, `promote()` reopens read-write. A mismatched schema
+  fingerprint refuses the sync rather than replaying foreign bytes;
+  a killed primary leaves a committed prefix with no holes.
 
 CRUD, transactions (`begin`/`commit`/`rollback`/`transaction`), and
 `close` are `Backend` methods, identical across handles. Declared

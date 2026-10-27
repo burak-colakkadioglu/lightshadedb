@@ -146,6 +146,7 @@ fn damaged_wal_is_truncated_to_a_committed_prefix() {
         Command::new(&binary)
             .arg(mode)
             .arg(&database)
+            .env("LIGHTSHADE_WAL_PREALLOC_BYTES", "0")
             .output()
             .expect("failed to run generated binary")
     };
@@ -260,7 +261,7 @@ fn damaged_wal_is_truncated_to_a_committed_prefix() {
     }
 
     let mut future = snapshot.clone();
-    future[8..12].copy_from_slice(&9u32.to_le_bytes());
+    future[8..12].copy_from_slice(&10u32.to_le_bytes());
     std::fs::write(&database, &future).unwrap();
     std::fs::write(&wal, []).unwrap();
     let (success, output) = verify();
@@ -297,6 +298,7 @@ fn write_failures_surface_as_errors_and_recover() {
         let output = Command::new(&binary)
             .arg(mode)
             .arg(&database)
+            .env("LIGHTSHADE_WAL_PREALLOC_BYTES", "0")
             .output()
             .expect("failed to run generated binary");
         (output.status.success(), output)
@@ -310,7 +312,12 @@ fn write_failures_surface_as_errors_and_recover() {
         "rows 2\nfinished 1"
     );
 
-    let limited = run_limited(&binary, "autocommit", &database);
+    let limited = run_limited_env(
+        &binary,
+        "autocommit",
+        &database,
+        &[("LIGHTSHADE_WAL_PREALLOC_BYTES", "0")],
+    );
     assert!(
         limited.status.success(),
         "limited autocommit failed: {}",
@@ -344,7 +351,12 @@ fn write_failures_surface_as_errors_and_recover() {
     );
 
     let before = 2 + inserted;
-    let limited = run_limited(&binary, "transaction", &database);
+    let limited = run_limited_env(
+        &binary,
+        "transaction",
+        &database,
+        &[("LIGHTSHADE_WAL_PREALLOC_BYTES", "0")],
+    );
     assert!(
         limited.status.success(),
         "limited transaction failed: {}",

@@ -22,6 +22,7 @@ fn persists_reopens_and_recovers_from_crash() {
     let run = |mode: &str| {
         let output = Command::new(&binary)
             .arg(mode)
+            .env("LIGHTSHADE_WAL_PREALLOC_BYTES", "0")
             .arg(&database)
             .output()
             .expect("failed to run generated binary");
@@ -542,6 +543,7 @@ fn ops_backup_compact_and_recovery_preserve_rows() {
         let output = Command::new(&binary)
             .arg(&database)
             .args(args)
+            .env("LIGHTSHADE_WAL_PREALLOC_BYTES", "0")
             .output()
             .expect("failed to run interface binary");
         (
@@ -601,7 +603,7 @@ fn ops_backup_compact_and_recovery_preserve_rows() {
 
     let (success, output) = run(&["inspect"]);
     assert!(success, "{output}");
-    assert!(output.contains("version: 8"), "{output}");
+    assert!(output.contains("version: 9"), "{output}");
     assert!(output.contains("lsn: 2"), "{output}");
     assert!(output.contains("rows: 2"), "{output}");
     assert!(output.contains("table notes: 2 rows"), "{output}");
@@ -993,6 +995,7 @@ fn transactions_commit_abort_and_rollback_atomically() {
         let output = Command::new(&binary)
             .arg(mode)
             .arg(&database)
+            .env("LIGHTSHADE_WAL_PREALLOC_BYTES", "0")
             .output()
             .expect("failed to run generated binary");
         (output.status.success(), output)

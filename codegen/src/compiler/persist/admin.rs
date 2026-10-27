@@ -142,7 +142,7 @@ pub(crate) fn emit_admin_methods(out: &mut String, workload: &Workload) {
     .unwrap();
     writeln!(out, "        if input.take(8)?[..] != __LS_MAGIC[..] {{ return Err(__ls_invalid(\"bad snapshot magic\")); }}").unwrap();
     writeln!(out, "        let version = input.u32()?;").unwrap();
-    writeln!(out, "        if version != __LS_VERSION && version != __LS_PREVIOUS_VERSION && version != __LS_OLD_VERSION {{ return Err(__ls_invalid(\"unsupported snapshot version\")); }}").unwrap();
+    writeln!(out, "        if version != __LS_VERSION && version != __LS_PREVIOUS_VERSION && version != __LS_OLD_VERSION && version != __LS_ANCIENT_VERSION {{ return Err(__ls_invalid(\"unsupported snapshot version\")); }}").unwrap();
     writeln!(out, "        let stored_fingerprint = input.u64()?;").unwrap();
     writeln!(out, "        let lsn = input.u64()?;").unwrap();
     writeln!(out, "        let count = input.u32()? as usize;").unwrap();
@@ -171,7 +171,7 @@ pub(crate) fn emit_admin_methods(out: &mut String, workload: &Workload) {
     writeln!(out, "            while parsed < rows {{").unwrap();
     writeln!(
         out,
-        "                __ls_read_chunk(&mut input, rows, &mut parsed)?;"
+        "                __ls_read_chunk(&mut input, rows, &mut parsed, version)?;"
     )
     .unwrap();
     writeln!(out, "            }}").unwrap();

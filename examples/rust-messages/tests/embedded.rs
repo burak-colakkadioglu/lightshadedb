@@ -187,6 +187,7 @@ fn read_only_and_missing_paths_are_typed() {
 fn admin_reports_and_backups_are_typed() {
     use lightshadedb::admin::{BackupOptions, VerifyOptions};
 
+    std::env::set_var("LIGHTSHADE_WAL_PREALLOC_BYTES", "0");
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("messages.lsdb");
     {

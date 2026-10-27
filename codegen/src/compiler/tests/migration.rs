@@ -115,7 +115,7 @@ fn reads_version_six_snapshots() {
     let source = generate_interface(&workload).unwrap();
     let old_source = source
         .replace(
-            "const __LS_VERSION: u32 = 8;",
+            "const __LS_VERSION: u32 = 9;",
             "const __LS_VERSION: u32 = 6;",
         )
         .replacen(
@@ -178,7 +178,7 @@ fn reads_version_six_snapshots() {
         .expect("failed to inspect");
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{text}");
-    assert!(text.contains("version: 8"), "{text}");
+    assert!(text.contains("version: 9"), "{text}");
     let _ = std::fs::remove_dir_all(&old_directory);
 }
 
@@ -218,7 +218,11 @@ fn main() {
     __ls_put_u64(&mut record, __ls_hash(&payload));
     record.extend_from_slice(&payload);
 
-    let mut file = std::fs::OpenOptions::new().append(true).open(&wal).unwrap();
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&wal)
+        .unwrap();
+    file.set_len(0).unwrap();
     file.write_all(&record).unwrap();
     file.sync_data().unwrap();
 

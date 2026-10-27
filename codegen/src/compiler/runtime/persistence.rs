@@ -1,10 +1,20 @@
 pub(crate) const PERSISTENCE_RUNTIME: &str = r#"const __LS_MAGIC: [u8; 8] = *b"LIGHTSS1";
 const __LS_FILE_MODE: u32 = 0o600;
-const __LS_VERSION: u32 = 8;
-const __LS_PREVIOUS_VERSION: u32 = 7;
-const __LS_OLD_VERSION: u32 = 6;
-const __LS_WAL_VERSION: u32 = 3;
+const __LS_VERSION: u32 = 9;
+const __LS_PREVIOUS_VERSION: u32 = 8;
+const __LS_OLD_VERSION: u32 = 7;
+const __LS_ANCIENT_VERSION: u32 = 6;
+const __LS_WAL_VERSION: u32 = 4;
+const __LS_WAL_PREVIOUS_VERSION: u32 = 3;
 const __LS_LEGACY_WAL_VERSION: u32 = 5;
+const __LS_FLAG_COMPRESSED: u32 = 0x80000000;
+const __LS_FLAG_ENCRYPTED: u32 = 0x40000000;
+const __LS_FLAG_MASK: u32 = 0xC0000000;
+const __LS_LEN_MASK: u32 = 0x3FFFFFFF;
+const __LS_WAL_PREALLOC_DEFAULT: u64 = 8 * 1024 * 1024;
+const __LS_WAL_PREALLOC_THRESHOLD: u64 = 1024 * 1024;
+const __LS_NONCE_LEN: usize = 12;
+const __LS_TAG_LEN: usize = 32;
 const __LS_WAL_HEADER: usize = 40;
 const __LS_SNAPSHOT_CHUNK: usize = 1024 * 1024;
 const __LS_MAX_CHUNK: usize = 512 * 1024 * 1024;
@@ -28,7 +38,10 @@ impl __LsText {
     fn as_str(&self) -> &str {
         match self {
             __LsText::Inline(length, bytes) => {
-                unsafe { std::str::from_utf8_unchecked(&bytes[..*length as usize]) }
+                match std::str::from_utf8(&bytes[..*length as usize]) {
+                    Ok(value) => value,
+                    Err(_) => "",
+                }
             }
             __LsText::Heap(value) => value,
         }
@@ -798,26 +811,7 @@ fn __ls_full_sync_requested() -> bool {
 
 #[cfg(target_os = "macos")]
 fn __ls_barrier_sync(file: &File) -> io::Result<()> {
-    use std::os::unix::io::AsRawFd;
-    const F_BARRIERFSYNC: i32 = 86;
-    unsafe extern "C" {
-        fn fcntl(fd: i32, cmd: i32, ...) -> i32;
-        fn fsync(fd: i32) -> i32;
-    }
-    let fd = file.as_raw_fd();
-    if unsafe { fcntl(fd, F_BARRIERFSYNC) } != -1 {
-        return Ok(());
-    }
-    let error = io::Error::last_os_error();
-    match error.raw_os_error() {
-        Some(25) | Some(22) => {}
-        _ => return Err(error),
-    }
-    if unsafe { fsync(fd) } == -1 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
+    file.sync_data()
 }
 
 fn __ls_sync_file(file: &File, data_only: bool) -> io::Result<()> {
@@ -1228,7 +1222,7 @@ impl<R: Read> __LsInput<R> {
     }
 
     fn take(&mut self, count: usize) -> io::Result<Vec<u8>> {
-        if count > __LS_MAX_CHUNK {
+        if count > __LS_MAX_CHUNK + 1024 {
             return Err(__ls_invalid("snapshot value is too large"));
         }
         let mut bytes = vec![0u8; count];
@@ -1314,40 +1308,528 @@ fn __ls_emit<W: Write>(writer: &mut W, hash: &mut u64, bytes: &[u8]) -> io::Resu
     writer.write_all(bytes)
 }
 
+fn __ls_compression_enabled() -> bool {
+    match std::env::var("LIGHTSHADE_COMPRESSION").as_deref() {
+        Ok(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            matches!(
+                normalized.as_str(),
+                "1" | "true" | "yes" | "on" | "rle" | "lz"
+            )
+        }
+        Err(_) => false,
+    }
+}
+
+fn __ls_wal_prealloc_bytes() -> u64 {
+    match std::env::var("LIGHTSHADE_WAL_PREALLOC_BYTES")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+    {
+        Some(value) => value,
+        None => __LS_WAL_PREALLOC_DEFAULT,
+    }
+}
+
+fn __ls_wal_grow(file: &File, valid: u64) -> io::Result<()> {
+    let segment = __ls_wal_prealloc_bytes();
+    if segment == 0 {
+        return Ok(());
+    }
+    let length = file.metadata()?.len();
+    let want = valid.saturating_add(segment);
+    if length < want {
+        file.set_len(want)?;
+    }
+    Ok(())
+}
+
+fn __ls_wal_maybe_grow(file: &File, valid: u64) -> io::Result<()> {
+    let segment = __ls_wal_prealloc_bytes();
+    if segment == 0 {
+        return Ok(());
+    }
+    let length = file.metadata()?.len();
+    let remaining = length.saturating_sub(valid);
+    let threshold = __LS_WAL_PREALLOC_THRESHOLD.min(segment);
+    if remaining < threshold {
+        file.set_len(valid.saturating_add(segment))?;
+    }
+    Ok(())
+}
+
+const __LS_SHA256_INITIAL: [u32; 8] = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+    0x5be0cd19,
+];
+
+const __LS_SHA256_K: [u32; 64] = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+    0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+    0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+    0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+    0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+    0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+    0xc67178f2,
+];
+
+fn __ls_sha256(data: &[u8]) -> [u8; 32] {
+    let mut state = __LS_SHA256_INITIAL;
+    let bit_length = (data.len() as u64).wrapping_mul(8);
+    let mut message = data.to_vec();
+    message.push(0x80);
+    while message.len() % 64 != 56 {
+        message.push(0);
+    }
+    message.extend_from_slice(&bit_length.to_be_bytes());
+    for block in message.chunks_exact(64) {
+        let mut words = [0u32; 64];
+        for index in 0..16 {
+            let at = index * 4;
+            words[index] = u32::from_be_bytes([block[at], block[at + 1], block[at + 2], block[at + 3]]);
+        }
+        for index in 16..64 {
+            let s0 = words[index - 15].rotate_right(7)
+                ^ words[index - 15].rotate_right(18)
+                ^ (words[index - 15] >> 3);
+            let s1 = words[index - 2].rotate_right(17)
+                ^ words[index - 2].rotate_right(19)
+                ^ (words[index - 2] >> 10);
+            words[index] = words[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(words[index - 7])
+                .wrapping_add(s1);
+        }
+        let mut a = state[0];
+        let mut b = state[1];
+        let mut c = state[2];
+        let mut d = state[3];
+        let mut e = state[4];
+        let mut f = state[5];
+        let mut g = state[6];
+        let mut h = state[7];
+        for index in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let choice = (e & f) ^ ((!e) & g);
+            let t1 = h
+                .wrapping_add(s1)
+                .wrapping_add(choice)
+                .wrapping_add(__LS_SHA256_K[index])
+                .wrapping_add(words[index]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let majority = (a & b) ^ (a & c) ^ (b & c);
+            let t2 = s0.wrapping_add(majority);
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(t1);
+            d = c;
+            c = b;
+            b = a;
+            a = t1.wrapping_add(t2);
+        }
+        state[0] = state[0].wrapping_add(a);
+        state[1] = state[1].wrapping_add(b);
+        state[2] = state[2].wrapping_add(c);
+        state[3] = state[3].wrapping_add(d);
+        state[4] = state[4].wrapping_add(e);
+        state[5] = state[5].wrapping_add(f);
+        state[6] = state[6].wrapping_add(g);
+        state[7] = state[7].wrapping_add(h);
+    }
+    let mut output = [0u8; 32];
+    for (index, word) in state.iter().enumerate() {
+        output[index * 4..index * 4 + 4].copy_from_slice(&word.to_be_bytes());
+    }
+    output
+}
+
+fn __ls_ct_eq32(left: &[u8; 32], right: &[u8; 32]) -> bool {
+    let mut diff = 0u8;
+    for index in 0..32 {
+        diff |= left[index] ^ right[index];
+    }
+    diff == 0
+}
+
+fn __ls_hex_val(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+struct __LsKey {
+    bytes: [u8; 32],
+}
+
+impl Drop for __LsKey {
+    fn drop(&mut self) {
+        for byte in self.bytes.iter_mut() {
+            *byte = 0;
+        }
+        std::hint::black_box(self.bytes);
+    }
+}
+
+fn __ls_load_encryption_key() -> io::Result<Option<__LsKey>> {
+    let path = match std::env::var("LIGHTSHADE_ENCRYPTION_KEY_FILE") {
+        Ok(value) => {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+            trimmed
+        }
+        Err(_) => return Ok(None),
+    };
+    let meta = fs::symlink_metadata(&path).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("cannot read encryption key: {error}"),
+        )
+    })?;
+    if meta.file_type().is_symlink() || !meta.file_type().is_file() {
+        return Err(__ls_invalid("encryption key path must be a regular file"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if meta.permissions().mode() & 0o077 != 0 {
+            return Err(__ls_invalid("encryption key file must not be readable by group or others"));
+        }
+    }
+    let raw = fs::read(&path).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("cannot read encryption key: {error}"),
+        )
+    })?;
+    if raw.len() > 1024 {
+        return Err(__ls_invalid("encryption key file is too large"));
+    }
+    let mut text = Vec::new();
+    for byte in raw.iter() {
+        if !matches!(*byte, b' ' | b'\t' | b'\n' | b'\r') {
+            text.push(*byte);
+        }
+    }
+    std::hint::black_box(raw);
+    let mut key = [0u8; 32];
+    if text.len() == 32 {
+        key.copy_from_slice(&text);
+        for byte in text.iter_mut() {
+            *byte = 0;
+        }
+        std::hint::black_box(&text);
+        return Ok(Some(__LsKey { bytes: key }));
+    }
+    if text.len() == 64 {
+        for index in 0..32 {
+            let high = __ls_hex_val(text[index * 2]).ok_or_else(|| {
+                __ls_invalid("encryption key file is not 32 raw bytes or 64 hex characters")
+            })?;
+            let low = __ls_hex_val(text[index * 2 + 1]).ok_or_else(|| {
+                __ls_invalid("encryption key file is not 32 raw bytes or 64 hex characters")
+            })?;
+            key[index] = (high << 4) | low;
+        }
+        for byte in text.iter_mut() {
+            *byte = 0;
+        }
+        std::hint::black_box(&text);
+        return Ok(Some(__LsKey { bytes: key }));
+    }
+    for byte in text.iter_mut() {
+        *byte = 0;
+    }
+    std::hint::black_box(&text);
+    Err(__ls_invalid(
+        "encryption key file is not 32 raw bytes or 64 hex characters",
+    ))
+}
+
+static __LS_NONCE_COUNTER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn __ls_random_nonce12() -> [u8; 12] {
+    #[cfg(unix)]
+    {
+        if let Ok(mut file) = File::open("/dev/urandom") {
+            let mut nonce = [0u8; 12];
+            if file.read_exact(&mut nonce).is_ok() {
+                return nonce;
+            }
+        }
+    }
+    let counter = __LS_NONCE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id() as u64;
+    let mut material = Vec::new();
+    material.extend_from_slice(&nanos.to_le_bytes());
+    material.extend_from_slice(&counter.to_le_bytes());
+    material.extend_from_slice(&pid.to_le_bytes());
+    let first = __ls_sha256(&material);
+    let mut second_input = Vec::new();
+    second_input.extend_from_slice(&first);
+    second_input.extend_from_slice(&counter.to_le_bytes());
+    let second = __ls_sha256(&second_input);
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(&second[..12]);
+    nonce
+}
+
+fn __ls_keystream_block(key: &[u8; 32], nonce: &[u8; 12], counter: u64) -> [u8; 32] {
+    let mut material = Vec::with_capacity(52);
+    material.extend_from_slice(key);
+    material.extend_from_slice(nonce);
+    material.extend_from_slice(&counter.to_le_bytes());
+    __ls_sha256(&material)
+}
+
+fn __ls_cipher_xor(key: &[u8; 32], nonce: &[u8; 12], data: &[u8]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(data.len());
+    let mut counter = 0u64;
+    let mut position = 0usize;
+    while position < data.len() {
+        let block = __ls_keystream_block(key, nonce, counter);
+        counter = counter.wrapping_add(1);
+        let take = (data.len() - position).min(32);
+        for index in 0..take {
+            output.push(data[position + index] ^ block[index]);
+        }
+        position += take;
+    }
+    output
+}
+
+fn __ls_compute_tag(key: &[u8; 32], nonce: &[u8; 12], ciphertext: &[u8]) -> [u8; 32] {
+    let mut material = Vec::with_capacity(76 + ciphertext.len());
+    material.extend_from_slice(key);
+    material.extend_from_slice(nonce);
+    material.extend_from_slice(&(ciphertext.len() as u64).to_le_bytes());
+    material.extend_from_slice(ciphertext);
+    __ls_sha256(&material)
+}
+
+fn __ls_compress_body(raw: &[u8]) -> Vec<u8> {
+    let mut output = Vec::new();
+    let mut index = 0usize;
+    while index < raw.len() {
+        let mut run = 1usize;
+        while index + run < raw.len() && raw[index + run] == raw[index] && run < 131 {
+            run += 1;
+        }
+        if run >= 4 {
+            output.push(0x80 | ((run - 4) as u8));
+            output.push(raw[index]);
+            index += run;
+            continue;
+        }
+        let mut literal = 0usize;
+        while index + literal < raw.len() && literal < 128 {
+            let mut ahead = 1usize;
+            while index + literal + ahead < raw.len()
+                && raw[index + literal + ahead] == raw[index + literal]
+                && ahead < 131
+            {
+                ahead += 1;
+            }
+            if ahead >= 4 {
+                break;
+            }
+            literal += 1;
+        }
+        if literal == 0 {
+            literal = 1;
+        }
+        output.push((literal - 1) as u8);
+        output.extend_from_slice(&raw[index..index + literal]);
+        index += literal;
+    }
+    output
+}
+
+fn __ls_decompress_body(body: &[u8], original: usize) -> io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut index = 0usize;
+    while index < body.len() {
+        let control = body[index];
+        index += 1;
+        if control & 0x80 != 0 {
+            let run = ((control & 0x7f) as usize) + 4;
+            if index >= body.len() {
+                return Err(__ls_invalid("compressed payload is truncated"));
+            }
+            let value = body[index];
+            index += 1;
+            if output.len().saturating_add(run) > original {
+                return Err(__ls_invalid("compressed payload length mismatch"));
+            }
+            output.extend(std::iter::repeat(value).take(run));
+        } else {
+            let literal = ((control & 0x7f) as usize) + 1;
+            if body.len().saturating_sub(index) < literal {
+                return Err(__ls_invalid("compressed payload is truncated"));
+            }
+            if output.len().saturating_add(literal) > original {
+                return Err(__ls_invalid("compressed payload length mismatch"));
+            }
+            output.extend_from_slice(&body[index..index + literal]);
+            index += literal;
+        }
+    }
+    if output.len() != original {
+        return Err(__ls_invalid("compressed payload length mismatch"));
+    }
+    Ok(output)
+}
+
+fn __ls_seal_bytes(raw: &[u8]) -> io::Result<(Vec<u8>, u32)> {
+    let compress = __ls_compression_enabled();
+    let key = __ls_load_encryption_key()?;
+    let mut plain = Vec::new();
+    let mut flags = 0u32;
+    if compress && !raw.is_empty() {
+        let body = __ls_compress_body(raw);
+        if body.len().saturating_add(4) < raw.len() {
+            flags |= __LS_FLAG_COMPRESSED;
+            plain.extend_from_slice(&(raw.len() as u32).to_le_bytes());
+            plain.extend_from_slice(&body);
+        } else {
+            plain.extend_from_slice(raw);
+        }
+    } else {
+        plain.extend_from_slice(raw);
+    }
+    if let Some(key) = key.as_ref() {
+        flags |= __LS_FLAG_ENCRYPTED;
+        let nonce = __ls_random_nonce12();
+        let ciphertext = __ls_cipher_xor(&key.bytes, &nonce, &plain);
+        let tag = __ls_compute_tag(&key.bytes, &nonce, &ciphertext);
+        let mut stored = Vec::with_capacity(12 + ciphertext.len() + 32);
+        stored.extend_from_slice(&nonce);
+        stored.extend_from_slice(&ciphertext);
+        stored.extend_from_slice(&tag);
+        for byte in plain.iter_mut() {
+            *byte = 0;
+        }
+        std::hint::black_box(&plain);
+        Ok((stored, flags))
+    } else {
+        Ok((plain, flags))
+    }
+}
+
+fn __ls_open_bytes(stored: &[u8], flags: u32) -> io::Result<Vec<u8>> {
+    let mut plain = stored.to_vec();
+    if flags & __LS_FLAG_ENCRYPTED != 0 {
+        let key = __ls_load_encryption_key()?;
+        let key = match key.as_ref() {
+            Some(key) => key,
+            None => return Err(__ls_invalid("WAL record is encrypted but no encryption key is configured")),
+        };
+        if plain.len() < __LS_NONCE_LEN + __LS_TAG_LEN {
+            return Err(__ls_invalid("encrypted payload is truncated"));
+        }
+        let split = plain.len() - __LS_TAG_LEN;
+        let mut nonce = [0u8; 12];
+        nonce.copy_from_slice(&plain[..12]);
+        let ciphertext = plain[12..split].to_vec();
+        let mut tag = [0u8; 32];
+        tag.copy_from_slice(&plain[split..]);
+        let expected = __ls_compute_tag(&key.bytes, &nonce, &ciphertext);
+        if !__ls_ct_eq32(&tag, &expected) {
+            return Err(__ls_invalid("WAL authentication failed"));
+        }
+        plain = __ls_cipher_xor(&key.bytes, &nonce, &ciphertext);
+    }
+    if flags & __LS_FLAG_COMPRESSED != 0 {
+        if plain.len() < 4 {
+            return Err(__ls_invalid("compressed payload is truncated"));
+        }
+        let original =
+            u32::from_le_bytes([plain[0], plain[1], plain[2], plain[3]]) as usize;
+        if original > __LS_MAX_CHUNK {
+            return Err(__ls_invalid("snapshot chunk is too large"));
+        }
+        let body = plain[4..].to_vec();
+        for byte in plain.iter_mut() {
+            *byte = 0;
+        }
+        std::hint::black_box(&plain);
+        __ls_decompress_body(&body, original)
+    } else {
+        Ok(plain)
+    }
+}
+
 fn __ls_emit_chunk<W: Write>(
     writer: &mut W,
     hash: &mut u64,
     rows: u32,
     chunk: &[u8],
 ) -> io::Result<()> {
+    let expected = __ls_hash(chunk);
+    let (stored, flags) = __ls_seal_bytes(chunk)?;
+    if stored.len() > (__LS_LEN_MASK as usize) {
+        return Err(__ls_invalid("snapshot chunk is too large"));
+    }
     let mut header = Vec::new();
-    __ls_put_u32(&mut header, chunk.len() as u32);
+    __ls_put_u32(&mut header, (stored.len() as u32) | flags);
     __ls_put_u32(&mut header, rows);
-    __ls_put_u64(&mut header, __ls_hash(chunk));
+    __ls_put_u64(&mut header, expected);
     __ls_emit(writer, hash, &header)?;
-    __ls_emit(writer, hash, chunk)
+    __ls_emit(writer, hash, &stored)
 }
 
 fn __ls_read_chunk<R: Read>(
     input: &mut __LsInput<R>,
     rows: u64,
     parsed: &mut u64,
+    version: u32,
 ) -> io::Result<(Vec<u8>, u32)> {
-    let length = input.u32()? as usize;
+    let raw_length = input.u32()?;
     let chunk_rows = input.u32()?;
     if chunk_rows == 0 || chunk_rows as u64 > rows - *parsed {
         return Err(__ls_invalid("snapshot chunk row count mismatch"));
     }
-    if length > __LS_MAX_CHUNK {
+    let flags = raw_length & __LS_FLAG_MASK;
+    let length = (raw_length & __LS_LEN_MASK) as usize;
+    if version >= __LS_VERSION {
+        if flags & !__LS_FLAG_MASK != 0 {
+            return Err(__ls_invalid("snapshot chunk has invalid flags"));
+        }
+    } else if flags != 0 {
+        return Err(__ls_invalid("snapshot chunk is too large"));
+    }
+    if length > __LS_MAX_CHUNK + 128 {
         return Err(__ls_invalid("snapshot chunk is too large"));
     }
     let expected = input.u64()?;
-    let payload = input.take(length)?;
-    if __ls_hash(&payload) != expected {
-        return Err(__ls_invalid("snapshot chunk checksum mismatch"));
+    let stored = input.take(length)?;
+    if version >= __LS_VERSION {
+        let payload = __ls_open_bytes(&stored, flags)?;
+        if __ls_hash(&payload) != expected {
+            return Err(__ls_invalid("snapshot chunk checksum mismatch"));
+        }
+        *parsed += chunk_rows as u64;
+        Ok((payload, chunk_rows))
+    } else {
+        if __ls_hash(&stored) != expected {
+            return Err(__ls_invalid("snapshot chunk checksum mismatch"));
+        }
+        *parsed += chunk_rows as u64;
+        Ok((stored, chunk_rows))
     }
-    *parsed += chunk_rows as u64;
-    Ok((payload, chunk_rows))
 }
 
 enum __LsOwnedValue {
@@ -1566,6 +2048,18 @@ fn __ls_row_cache_budget() -> u64 {
     }
 }
 
+fn __ls_now_millis() -> u64 {
+    if let Ok(value) = std::env::var("LIGHTSHADE_NOW_MILLIS") {
+        if let Ok(parsed) = value.trim().parse::<u64>() {
+            return parsed;
+        }
+    }
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 fn __ls_spill_dir() -> io::Result<PathBuf> {
     let configured = std::env::var("LIGHTSHADE_SPILL_DIR")
         .ok()
@@ -1601,6 +2095,36 @@ fn __ls_encode_delete(payload: &mut Vec<u8>, table: &str, key: __LsValue<'_>) {
     __ls_put_value(payload, key);
 }
 
+fn __ls_zero_to_end<R: io::Read + io::Seek>(wal: &mut R, position: u64) -> bool {
+    let end = match wal.seek(io::SeekFrom::End(0)) {
+        Ok(end) => end,
+        Err(_) => return false,
+    };
+    if wal.seek(io::SeekFrom::Start(position)).is_err() {
+        return false;
+    }
+    let mut remaining = end.saturating_sub(position);
+    if remaining == 0 {
+        return false;
+    }
+    let mut chunk = [0u8; 65536];
+    while remaining > 0 {
+        let want = remaining.min(chunk.len() as u64) as usize;
+        let bytes = match wal.read(&mut chunk[..want]) {
+            Ok(bytes) => bytes,
+            Err(_) => return false,
+        };
+        if bytes == 0 {
+            break;
+        }
+        if chunk[..bytes].iter().any(|byte| *byte != 0) {
+            return false;
+        }
+        remaining -= bytes as u64;
+    }
+    true
+}
+
 fn __ls_replay_wal<R: io::Read + io::Seek>(
     db: &mut Db,
     wal: &mut R,
@@ -1631,24 +2155,62 @@ fn __ls_replay_wal<R: io::Read + io::Seek>(
             }
             Err(error) => return Err(error),
         }
+        if header.iter().all(|byte| *byte == 0) {
+            break;
+        }
         if header[..8] != __LS_MAGIC {
+            if __ls_zero_to_end(wal, position + __LS_WAL_HEADER as u64) {
+                break;
+            }
             return Err(__ls_invalid("bad WAL magic"));
         }
         let version = u32::from_le_bytes(header[8..12].try_into().unwrap());
         let old_operations = version == __LS_LEGACY_WAL_VERSION;
         let old_effects = version == 2;
-        if version != __LS_WAL_VERSION && !old_operations && !old_effects {
+        let previous_effects = version == __LS_WAL_PREVIOUS_VERSION;
+        if version != __LS_WAL_VERSION
+            && !previous_effects
+            && !old_operations
+            && !old_effects
+        {
+            if __ls_zero_to_end(wal, position + __LS_WAL_HEADER as u64) {
+                break;
+            }
             return Err(__ls_invalid("unsupported WAL version"));
         }
         let fingerprint = u64::from_le_bytes(header[12..20].try_into().unwrap());
-        if version == __LS_WAL_VERSION && !migrate && fingerprint != __LS_SCHEMA {
+        if (version == __LS_WAL_VERSION || previous_effects) && !migrate && fingerprint != __LS_SCHEMA {
+            if __ls_zero_to_end(wal, position + __LS_WAL_HEADER as u64) {
+                break;
+            }
             return Err(__ls_invalid("WAL schema mismatch"));
         }
         if old_operations && fingerprint != __LS_WORKLOAD {
+            if __ls_zero_to_end(wal, position + __LS_WAL_HEADER as u64) {
+                break;
+            }
             return Err(__ls_invalid("WAL workload mismatch"));
         }
-        let length = u32::from_le_bytes(header[20..24].try_into().unwrap()) as usize;
-        if length > __LS_MAX_WAL_RECORD {
+        let raw_length = u32::from_le_bytes(header[20..24].try_into().unwrap());
+        let flags = raw_length & __LS_FLAG_MASK;
+        let length = (raw_length & __LS_LEN_MASK) as usize;
+        if version == __LS_WAL_VERSION {
+            if flags & !__LS_FLAG_MASK != 0 {
+                if __ls_zero_to_end(wal, position + __LS_WAL_HEADER as u64) {
+                break;
+            }
+                return Err(__ls_invalid("WAL record has invalid flags"));
+            }
+        } else if flags != 0 {
+            if __ls_zero_to_end(wal, position + __LS_WAL_HEADER as u64) {
+                break;
+            }
+            return Err(__ls_invalid("WAL record is too large"));
+        }
+        if length > __LS_MAX_WAL_RECORD + 128 {
+            if __ls_zero_to_end(wal, position + __LS_WAL_HEADER as u64) {
+                break;
+            }
             return Err(__ls_invalid("WAL record is too large"));
         }
         let record_end = position + __LS_WAL_HEADER as u64 + length as u64;
@@ -1659,8 +2221,8 @@ fn __ls_replay_wal<R: io::Read + io::Seek>(
         }
         let lsn = u64::from_le_bytes(header[24..32].try_into().unwrap());
         let checksum = u64::from_le_bytes(header[32..40].try_into().unwrap());
-        let mut payload = vec![0u8; length];
-        match wal.read_exact(&mut payload) {
+        let mut stored = vec![0u8; length];
+        match wal.read_exact(&mut stored) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
                 if let Some(limit) = limit {
@@ -1672,9 +2234,40 @@ fn __ls_replay_wal<R: io::Read + io::Seek>(
             }
             Err(error) => return Err(error),
         }
-        if __ls_hash(&payload) != checksum {
-            return Err(__ls_invalid("WAL checksum mismatch"));
+        if stored.iter().all(|byte| *byte == 0) {
+            break;
         }
+        let payload = if version == __LS_WAL_VERSION {
+            let raw = __ls_open_bytes(&stored, flags)?;
+            if raw.is_empty() {
+                if __ls_zero_to_end(wal, record_end) {
+                break;
+            }
+                return Err(__ls_invalid("WAL checksum mismatch"));
+            }
+            if raw.len() < 1 {
+                if __ls_zero_to_end(wal, record_end) {
+                break;
+            }
+                return Err(__ls_invalid("WAL checksum mismatch"));
+            }
+            let body = raw[1..].to_vec();
+            if __ls_hash_tagged(1, &body) != checksum {
+                if __ls_zero_to_end(wal, record_end) {
+                break;
+            }
+                return Err(__ls_invalid("WAL checksum mismatch"));
+            }
+            raw
+        } else {
+            if __ls_hash(&stored) != checksum {
+                if __ls_zero_to_end(wal, record_end) {
+                break;
+            }
+                return Err(__ls_invalid("WAL checksum mismatch"));
+            }
+            stored
+        };
         if lsn > snapshot_lsn {
             if lsn != max_lsn + 1 {
                 return Err(__ls_invalid("WAL LSN gap"));
@@ -1745,12 +2338,14 @@ impl Db {
             (Db::__ls_new_spilled()?, 0)
         };
         let wal_path = __ls_sidecar(path, ".wal");
+        let _ = __ls_load_encryption_key()?;
         let mut wal = __ls_open_private_file(&wal_path)?;
         let (max_lsn, valid_length) = __ls_replay_wal(&mut db, &mut wal, snapshot_lsn, None, migrate)?;
         let replayed = max_lsn > snapshot_lsn;
         db.__ls_lsn = max_lsn;
         wal.set_len(valid_length)?;
-        wal.seek(SeekFrom::End(0))?;
+        __ls_wal_grow(&wal, valid_length)?;
+        wal.seek(SeekFrom::Start(valid_length))?;
         db.__ls_store = Some(__LsStore {
             path: path.to_path_buf(),
             sync: std::sync::Arc::new(__LsWalSync {
@@ -2059,6 +2654,13 @@ impl Db {
         self.__ls_lsn
     }
 
+    pub fn __ls_wal_valid_len(&self) -> u64 {
+        let Some(sync) = self.__ls_wal_sync() else {
+            return 0;
+        };
+        sync.mutex.lock().map(|guard| guard.bytes).unwrap_or(0)
+    }
+
     fn __ls_wal_sync(&self) -> Option<std::sync::Arc<__LsWalSync>> {
         self.__ls_store
             .as_ref()
@@ -2122,11 +2724,22 @@ impl Db {
         };
         let lsn = self.__ls_lsn + 1;
         let checksum = __ls_hash_tagged(1, operations);
+        let mut raw = Vec::with_capacity(operations.len() + 1);
+        raw.push(1u8);
+        raw.extend_from_slice(operations);
+        let (stored, flags) = __ls_seal_bytes(&raw)?;
+        if stored.len() > (__LS_LEN_MASK as usize) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "WAL record is too large",
+            ));
+        }
+        let stored_length = (stored.len() as u32) | flags;
         let mut header = [0u8; __LS_WAL_HEADER];
         header[..8].copy_from_slice(&__LS_MAGIC);
         header[8..12].copy_from_slice(&__LS_WAL_VERSION.to_le_bytes());
         header[12..20].copy_from_slice(&__LS_SCHEMA.to_le_bytes());
-        header[20..24].copy_from_slice(&length.to_le_bytes());
+        header[20..24].copy_from_slice(&stored_length.to_le_bytes());
         header[24..32].copy_from_slice(&lsn.to_le_bytes());
         header[32..40].copy_from_slice(&checksum.to_le_bytes());
         let sync_each = store.sync_each;
@@ -2137,12 +2750,12 @@ impl Db {
         }
         let deferred = guard.deferred;
         guard.wal.write_all(&header)?;
-        guard.wal.write_all(&[1u8])?;
-        guard.wal.write_all(operations)?;
+        guard.wal.write_all(&stored)?;
         guard.bytes = guard
             .bytes
-            .saturating_add(__LS_WAL_HEADER as u64 + 1 + operations.len() as u64);
+            .saturating_add(__LS_WAL_HEADER as u64 + stored.len() as u64);
         guard.lsn = lsn;
+        let _ = __ls_wal_maybe_grow(guard.wal.get_ref(), guard.bytes);
         if deferred {
             drop(guard);
             sync.cond.notify_one();
@@ -2248,6 +2861,7 @@ impl Db {
         {
             let mut guard = sync.mutex.lock().map_err(|_| __ls_wal_poisoned())?;
             guard.wal.get_mut().set_len(valid_length)?;
+            let _ = __ls_wal_grow(guard.wal.get_mut(), valid_length);
             guard.wal.get_mut().seek(SeekFrom::Start(valid_length))?;
             guard.bytes = valid_length;
             guard.lsn = max_lsn;
@@ -2269,6 +2883,7 @@ impl Db {
         if self.__ls_store.is_none() {
             return Ok(());
         }
+        let _ = self.__ls_purge_expired();
         let path = self.__ls_store.as_ref().unwrap().path.clone();
         let temporary = __ls_sidecar(&path, ".tmp");
         match fs::remove_file(&temporary) {
@@ -2294,6 +2909,7 @@ impl Db {
             let mut guard = sync.mutex.lock().map_err(|_| __ls_wal_poisoned())?;
             guard.wal.flush()?;
             guard.wal.get_mut().set_len(0)?;
+            let _ = __ls_wal_grow(guard.wal.get_mut(), 0);
             guard.wal.get_mut().seek(SeekFrom::Start(0))?;
             __ls_sync_file(guard.wal.get_mut(), false)?;
             guard.bytes = 0;

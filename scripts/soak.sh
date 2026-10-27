@@ -6,6 +6,7 @@ cd "$ROOT"
 
 SECONDS_TO_RUN="${LIGHTSHADE_SOAK_SECONDS:-60}"
 READERS="${LIGHTSHADE_SOAK_READERS:-4}"
+WRITERS="${LIGHTSHADE_SOAK_WRITERS:-1}"
 WORK="${LIGHTSHADE_SOAK_DIR:-$(mktemp -d)}"
 KEEP="${LIGHTSHADE_SOAK_KEEP:-0}"
 CLI="${LIGHTSHADE_SOAK_CLI:-$ROOT/target/release/lightshade}"
@@ -42,6 +43,10 @@ if (( READERS < 1 )); then
     echo "LIGHTSHADE_SOAK_READERS must be at least 1" >&2
     exit 2
 fi
+if (( WRITERS < 1 )); then
+    echo "LIGHTSHADE_SOAK_WRITERS must be at least 1" >&2
+    exit 2
+fi
 if [[ ! -x "$CLI" ]]; then
     cargo build --release -p lightshadedb --bin lightshade
 fi
@@ -54,7 +59,7 @@ umask 077
 printf 'writer\twriter\t%s\nreader\treader\t%s\n' "$HASH" "$HASH" > "$CREDENTIALS"
 chmod 600 "$CREDENTIALS"
 
-echo "soak: ${SECONDS_TO_RUN}s, ${READERS} readers, workdir $WORK"
+echo "soak: ${SECONDS_TO_RUN}s, ${WRITERS} writers, ${READERS} readers, workdir $WORK"
 
 LIGHTSHADE_CREDENTIALS="$CREDENTIALS" \
 LIGHTSHADE_CREDENTIAL_ID=writer \
@@ -90,23 +95,27 @@ run_client() {
 
 : >"$WORK/attempted"
 : >"$WORK/acked"
-(
-    next=0
-    while [[ ! -e "$WORK/stop" ]]; do
-        next=$((next + 1))
-        printf '%s\n' "$next" >>"$WORK/attempted"
-        if run_client writer insert_message \
-            "id=$next" "inbox_id=$((next % 16))" "sent_at=$next" \
-            is_read=false "body=soak-$next" >/dev/null 2>>"$WORK/client.log"; then
-            printf '%s\n' "$next" >>"$WORK/acked"
-        else
-            printf 'writer failed at %s\n' "$next" >>"$WORK/client.log"
-            touch "$WORK/writer_failed"
-            exit 1
-        fi
-    done
-) &
-CLIENTS+=("$!")
+for writer in $(seq 1 "$WRITERS"); do
+    (
+        base=$((writer * 1000000000))
+        next=0
+        while [[ ! -e "$WORK/stop" ]]; do
+            next=$((next + 1))
+            id=$((base + next))
+            printf '%s\n' "$id" >>"$WORK/attempted"
+            if run_client writer insert_message \
+                "id=$id" "inbox_id=$((id % 16))" "sent_at=$id" \
+                is_read=false "body=soak-$id" >/dev/null 2>>"$WORK/client.log"; then
+                printf '%s\n' "$id" >>"$WORK/acked"
+            else
+                printf 'writer failed at %s\n' "$id" >>"$WORK/client.log"
+                touch "$WORK/writer_failed"
+                exit 1
+            fi
+        done
+    ) &
+    CLIENTS+=("$!")
+done
 
 for reader in $(seq 1 "$READERS"); do
     (

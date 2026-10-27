@@ -124,13 +124,13 @@ pub(crate) fn emit_advanced_loops(
             let spec = &plan.indexes[*index];
             let inner = index_inner_fields(spec, table)?;
             let row = index_row_expression(table, "__ls_key", &inner)?;
-            let (left_index, _, _) = resolve_source(&join.left, sources)?;
-            let (right_index, _, _) = resolve_source(&join.right, sources)?;
+            let (left_index, _, _) = resolve_source(&join.keys[0].left, sources)?;
+            let (right_index, _, _) = resolve_source(&join.keys[0].right, sources)?;
             let outer = if left_index == depth {
-                &join.right
+                &join.keys[0].right
             } else {
                 let _ = right_index;
-                &join.left
+                &join.keys[0].left
             };
             let (_, _, field) = resolve_source(outer, &sources[..=depth])?;
             let read = emit_field_read(outer, &sources[..=depth], false)?;
@@ -167,9 +167,30 @@ pub(crate) fn emit_advanced_loops(
             table.name
         )
         .unwrap();
-        let left = emit_field_read(&join.left, &sources[..=depth], false)?;
-        let right = emit_field_read(&join.right, &sources[..=depth], false)?;
-        writeln!(out, "            if !({left} == {right}) {{ continue; }}").unwrap();
+        let mut checks = Vec::new();
+        for key in &join.keys {
+            let left = emit_field_read(&key.left, &sources[..=depth], false)?;
+            let right = emit_field_read(&key.right, &sources[..=depth], false)?;
+            let (_, _, left_field) = resolve_source(&key.left, &sources[..=depth])?;
+            let (_, _, right_field) = resolve_source(&key.right, &sources[..=depth])?;
+            if left_field.nullable || right_field.nullable {
+                checks.push(emit_nullable_cmp(
+                    &left,
+                    left_field.nullable,
+                    &right,
+                    right_field.nullable,
+                    "==",
+                ));
+            } else {
+                checks.push(format!("({left} == {right})"));
+            }
+        }
+        writeln!(
+            out,
+            "            if !({}) {{ continue; }}",
+            checks.join(" && ")
+        )
+        .unwrap();
     }
     Ok(())
 }

@@ -57,6 +57,34 @@ fn validate_table(table: &Table) -> Result<(), String> {
         ));
     }
 
+    if let Some(ttl_secs) = table.ttl_secs {
+        if ttl_secs == 0 {
+            return Err(format!("table `{}` has a ttl of zero seconds", table.name));
+        }
+        match table.field("expires_at") {
+            Some((_, field)) => {
+                if field.ty != Ty::I64 || field.nullable {
+                    return Err(format!(
+                        "table `{}` with ttl needs a non-nullable `expires_at: i64` field",
+                        table.name
+                    ));
+                }
+                if field.primary_key {
+                    return Err(format!(
+                        "table `{}` expiry field `expires_at` cannot be the primary key",
+                        table.name
+                    ));
+                }
+            }
+            None => {
+                return Err(format!(
+                    "table `{}` with ttl needs a non-nullable `expires_at: i64` field",
+                    table.name
+                ));
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -105,13 +133,15 @@ fn validate_operation(workload: &Workload, operation: &Operation) -> Result<(), 
             }
             for (index, join) in joins.iter().enumerate() {
                 let available = &sources[..=index + 1];
-                let (_, left) = resolve_field(&join.left, available).map_err(prefix)?;
-                let (_, right) = resolve_field(&join.right, available).map_err(prefix)?;
-                if left.ty != right.ty {
-                    return Err(prefix(format!(
-                        "join compares `{}` ({}) with `{}` ({})",
-                        join.left, left.ty, join.right, right.ty
-                    )));
+                for key in &join.keys {
+                    let (_, left) = resolve_field(&key.left, available).map_err(prefix)?;
+                    let (_, right) = resolve_field(&key.right, available).map_err(prefix)?;
+                    if left.ty != right.ty {
+                        return Err(prefix(format!(
+                            "join compares `{}` ({}) with `{}` ({})",
+                            key.left, left.ty, key.right, right.ty
+                        )));
+                    }
                 }
             }
 

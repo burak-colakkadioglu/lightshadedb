@@ -237,6 +237,7 @@ fn server_enforces_transaction_row_and_wal_quotas() {
         &[
             ("LIGHTSHADE_MAX_WAL_BYTES", "1"),
             ("LIGHTSHADE_CHECKPOINT_BYTES", "0"),
+            ("LIGHTSHADE_WAL_PREALLOC_BYTES", "0"),
         ],
     );
     let mut wal = wire_connect(&wal_socket, fingerprint);
