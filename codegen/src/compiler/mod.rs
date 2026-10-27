@@ -13,7 +13,7 @@ mod plan;
 mod runtime;
 use common::row_type;
 use emit_query::{emit_advanced_query, emit_count_query, emit_many_query};
-use emit_write::{emit_delete, emit_insert, emit_update};
+use emit_write::{emit_bulk_insert, emit_delete, emit_insert, emit_update};
 #[allow(dead_code)]
 pub use interface::generate_interface;
 use persist::{
@@ -257,6 +257,7 @@ fn generate_library_impl(workload: &Workload, options: &GenerateOptions) -> Resu
         .filter(|table| !workload.is_projection(&table.name))
     {
         emit_maintenance(&mut out, workload, &plan, table)?;
+        emit_bulk_insert(&mut out, workload, &plan, table)?;
     }
 
     emit_ttl(&mut out, workload)?;

@@ -83,6 +83,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         )
         .unwrap();
         writeln!(out, "    cached_bytes: std::sync::atomic::AtomicU64,").unwrap();
+        writeln!(out, "    dead_rows: std::sync::atomic::AtomicU64,").unwrap();
         writeln!(out, "    shard_bytes: [std::sync::atomic::AtomicU64; 16],").unwrap();
         writeln!(out, "    stamp: std::sync::atomic::AtomicU64,").unwrap();
         writeln!(out, "    budget: u64,").unwrap();
@@ -126,7 +127,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "        let spill = options.open(&path)?;").unwrap();
         writeln!(
             out,
-            "        Ok({store} {{ slots: {slot_new}, spill: std::sync::RwLock::new(Some(spill)), spill_len: std::sync::atomic::AtomicU64::new(0), staging: std::sync::RwLock::new(__LsStaging {{ base: 0, buf: Vec::new() }}), spill_path: path, direct: false, arena: Vec::new(), overflow: std::collections::HashMap::with_hasher(Default::default()), cache: std::array::from_fn(|_| std::sync::RwLock::new(std::collections::HashMap::with_hasher(Default::default()))), order: std::array::from_fn(|_| std::sync::Mutex::new(std::collections::VecDeque::new())), cached_bytes: std::sync::atomic::AtomicU64::new(0), shard_bytes: std::array::from_fn(|_| std::sync::atomic::AtomicU64::new(0)), stamp: std::sync::atomic::AtomicU64::new(0), budget }})"
+            "        Ok({store} {{ slots: {slot_new}, spill: std::sync::RwLock::new(Some(spill)), spill_len: std::sync::atomic::AtomicU64::new(0), staging: std::sync::RwLock::new(__LsStaging {{ base: 0, buf: Vec::new() }}), spill_path: path, direct: false, arena: Vec::new(), overflow: std::collections::HashMap::with_hasher(Default::default()), cache: std::array::from_fn(|_| std::sync::RwLock::new(std::collections::HashMap::with_hasher(Default::default()))), order: std::array::from_fn(|_| std::sync::Mutex::new(std::collections::VecDeque::new())), cached_bytes: std::sync::atomic::AtomicU64::new(0), dead_rows: std::sync::atomic::AtomicU64::new(0), shard_bytes: std::array::from_fn(|_| std::sync::atomic::AtomicU64::new(0)), stamp: std::sync::atomic::AtomicU64::new(0), budget }})"
         )
         .unwrap();
         writeln!(out, "    }}").unwrap();
@@ -135,7 +136,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "    fn __ls_create_direct() -> io::Result<{store}> {{").unwrap();
         writeln!(
             out,
-            "        Ok({store} {{ slots: {slot_new}, spill: std::sync::RwLock::new(None), spill_len: std::sync::atomic::AtomicU64::new(0), staging: std::sync::RwLock::new(__LsStaging {{ base: 0, buf: Vec::new() }}), spill_path: PathBuf::new(), direct: true, arena: Vec::new(), overflow: std::collections::HashMap::with_hasher(Default::default()), cache: std::array::from_fn(|_| std::sync::RwLock::new(std::collections::HashMap::with_hasher(Default::default()))), order: std::array::from_fn(|_| std::sync::Mutex::new(std::collections::VecDeque::new())), cached_bytes: std::sync::atomic::AtomicU64::new(0), shard_bytes: std::array::from_fn(|_| std::sync::atomic::AtomicU64::new(0)), stamp: std::sync::atomic::AtomicU64::new(0), budget: 0 }})"
+            "        Ok({store} {{ slots: {slot_new}, spill: std::sync::RwLock::new(None), spill_len: std::sync::atomic::AtomicU64::new(0), staging: std::sync::RwLock::new(__LsStaging {{ base: 0, buf: Vec::new() }}), spill_path: PathBuf::new(), direct: true, arena: Vec::new(), overflow: std::collections::HashMap::with_hasher(Default::default()), cache: std::array::from_fn(|_| std::sync::RwLock::new(std::collections::HashMap::with_hasher(Default::default()))), order: std::array::from_fn(|_| std::sync::Mutex::new(std::collections::VecDeque::new())), cached_bytes: std::sync::atomic::AtomicU64::new(0), dead_rows: std::sync::atomic::AtomicU64::new(0), shard_bytes: std::array::from_fn(|_| std::sync::atomic::AtomicU64::new(0)), stamp: std::sync::atomic::AtomicU64::new(0), budget: 0 }})"
         )
         .unwrap();
         writeln!(out, "    }}").unwrap();
@@ -496,6 +497,18 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         writeln!(out, "        self.__ls_staging_flush()?;").unwrap();
         writeln!(
             out,
+            "        let __ls_dead = self.dead_rows.load(std::sync::atomic::Ordering::Relaxed);"
+        )
+        .unwrap();
+        writeln!(out, "        if __ls_dead == 0 {{ return Ok(()); }}").unwrap();
+        writeln!(
+            out,
+            "        let __ls_live_count = (self.slots.len() + self.overflow.len()) as u64;"
+        )
+        .unwrap();
+        writeln!(out, "        if __ls_dead < 64 && __ls_dead.saturating_mul(16) < __ls_live_count.max(1) {{ return Ok(()); }}").unwrap();
+        writeln!(
+            out,
             "        if self.slots.len() == 0 && self.overflow.is_empty() {{"
         )
         .unwrap();
@@ -512,6 +525,11 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         )
         .unwrap();
         writeln!(out, "            if let Ok(mut staging) = self.staging.write() {{ staging.base = 0; staging.buf.clear(); }}").unwrap();
+        writeln!(
+            out,
+            "            self.dead_rows.store(0, std::sync::atomic::Ordering::Relaxed);"
+        )
+        .unwrap();
         writeln!(out, "            return Ok(());").unwrap();
         writeln!(out, "        }}").unwrap();
         writeln!(
@@ -555,6 +573,11 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
         )
         .unwrap();
         writeln!(out, "        if let Ok(mut staging) = self.staging.write() {{ staging.base = __ls_offset; staging.buf.clear(); }}").unwrap();
+        writeln!(
+            out,
+            "        self.dead_rows.store(0, std::sync::atomic::Ordering::Relaxed);"
+        )
+        .unwrap();
         writeln!(out, "        Ok(())").unwrap();
         writeln!(out, "    }}").unwrap();
         writeln!(out).unwrap();
@@ -984,6 +1007,7 @@ pub(crate) fn emit_table_storage(out: &mut String, workload: &Workload) -> Resul
             "        let _ = self.shard_bytes[__ls_shard].fetch_update(std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed, |__ls_bytes| Some(__ls_bytes.saturating_sub(removed)));"
         )
         .unwrap();
+        writeln!(out, "        if !self.direct {{ self.dead_rows.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }}").unwrap();
         writeln!(out, "        Some(row)").unwrap();
         writeln!(out, "    }}").unwrap();
         writeln!(out).unwrap();

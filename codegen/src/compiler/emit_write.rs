@@ -7,6 +7,120 @@ use crate::ir::*;
 use std::collections::HashSet;
 use std::fmt::Write;
 
+pub(crate) fn emit_bulk_insert(
+    out: &mut String,
+    workload: &Workload,
+    plan: &Plan,
+    table: &Table,
+) -> Result<(), String> {
+    let primary_key = table
+        .primary_key()
+        .ok_or_else(|| format!("table `{}` has no primary key", table.name))?;
+    let row = row_type(&table.name);
+
+    let mut table_indexes: Vec<(usize, Vec<KeyField>)> = Vec::new();
+    for (index, spec) in plan.indexes.iter().enumerate() {
+        if spec.table != table.name {
+            continue;
+        }
+        table_indexes.push((index, index_inner_fields(spec, table)?));
+    }
+    let mut table_counters: Vec<usize> = Vec::new();
+    for (index, spec) in plan.counters.iter().enumerate() {
+        if spec.table == table.name {
+            table_counters.push(index);
+        }
+    }
+
+    writeln!(
+        out,
+        "    pub(crate) fn __ls_bulk_insert_{}(&mut self, __ls_rows: Vec<{}>) -> io::Result<u64> {{",
+        table.name, row
+    )
+    .unwrap();
+    writeln!(out, "        self.__ls_writable()?;").unwrap();
+    writeln!(out, "        let __ls_total = __ls_rows.len() as u64;").unwrap();
+    writeln!(out, "        if __ls_total == 0 {{ return Ok(0); }}").unwrap();
+    writeln!(
+        out,
+        "        self.__ls_check_row_limit(self.__ls_row_count().saturating_add(__ls_total))?;"
+    )
+    .unwrap();
+    writeln!(out, "        for __ls_row in &__ls_rows {{").unwrap();
+    writeln!(
+        out,
+        "            if self.t_{}.contains_key(&__ls_row.{}) {{ return Ok(0); }}",
+        table.name, primary_key.name
+    )
+    .unwrap();
+    writeln!(out, "        }}").unwrap();
+    writeln!(
+        out,
+        "        self.__ls_effects.reserve(__ls_rows.len().saturating_mul(64));"
+    )
+    .unwrap();
+    for (index, _) in &table_indexes {
+        writeln!(
+            out,
+            "        let mut __ls_pairs_{index}: Vec<(Idx{index}Eq, Idx{index}Key)> = Vec::with_capacity(__ls_rows.len());"
+        )
+        .unwrap();
+    }
+    writeln!(out, "        let mut __ls_inserted = 0u64;").unwrap();
+    writeln!(out, "        for mut __ls_row in __ls_rows {{").unwrap();
+    if let Some(ttl) = table.ttl_secs {
+        writeln!(out, "            if __ls_row.expires_at == 0 {{").unwrap();
+        writeln!(out, "                __ls_row.expires_at = (__ls_now_millis().saturating_add({}u64.saturating_mul(1000))) as i64;", ttl).unwrap();
+        writeln!(out, "            }}").unwrap();
+    }
+    writeln!(out, "            {}", effect_upsert_call(table, "__ls_row")).unwrap();
+    for (index, inner) in &table_indexes {
+        let spec = &plan.indexes[*index];
+        let eq = row_eq_ctor(&format!("Idx{index}Eq"), &spec.eq, "__ls_row");
+        let key = row_key_ctor(&format!("Idx{index}Key"), inner, "__ls_row");
+        writeln!(out, "            __ls_pairs_{index}.push(({eq}, {key}));").unwrap();
+    }
+    for index in &table_counters {
+        let key = row_eq_ctor(
+            &format!("Cnt{index}Key"),
+            &plan.counters[*index].eq,
+            "__ls_row",
+        );
+        writeln!(
+            out,
+            "            *self.cnt{index}.entry({key}).or_insert(0) += 1;"
+        )
+        .unwrap();
+    }
+    writeln!(
+        out,
+        "            self.t_{}.__ls_insert(__ls_row.{}.clone(), __ls_row);",
+        table.name, primary_key.name
+    )
+    .unwrap();
+    writeln!(out, "            __ls_inserted += 1;").unwrap();
+    writeln!(out, "        }}").unwrap();
+    for (index, _) in &table_indexes {
+        writeln!(out, "        {{").unwrap();
+        writeln!(
+            out,
+            "            let mut __ls_group = self.idx{index}.write().unwrap();"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "            for (__ls_eq, __ls_key) in __ls_pairs_{index} {{ __ls_group.insert(__ls_eq, __ls_key); }}"
+        )
+        .unwrap();
+        writeln!(out, "        }}").unwrap();
+    }
+    writeln!(out, "        Ok(__ls_inserted)").unwrap();
+    writeln!(out, "    }}").unwrap();
+    writeln!(out).unwrap();
+    let _ = workload;
+    Ok(())
+}
+
 pub(crate) fn emit_insert(
     out: &mut String,
     workload: &Workload,

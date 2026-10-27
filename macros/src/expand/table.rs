@@ -389,6 +389,7 @@ pub(crate) fn table_ops_impl(table: &LoweredTable, ident: &Ident) -> TokenStream
     });
     let key_ident = format_ident!("{}", table.primary_key);
     let key_arg = quote!(key.clone());
+    let bulk_insert = format_ident!("__ls_bulk_insert_{}", table.db_name);
     let patch_fields = fields
         .iter()
         .filter(|column| !column.primary_key)
@@ -420,15 +421,27 @@ pub(crate) fn table_ops_impl(table: &LoweredTable, ident: &Ident) -> TokenStream
                 if own {
                     store.begin()?;
                 }
-                for row in rows {
-                    if let ::std::result::Result::Err(error) = <Self as ::lightshadedb::table::TableOps<Db>>::insert(store, row) {
+                let expected = rows.len() as u64;
+                let outcome = __ls_public(store.inner.#bulk_insert(rows));
+                match outcome {
+                    ::std::result::Result::Ok(inserted) if inserted == expected => {
+                        if own { store.commit() } else { ::std::result::Result::Ok(()) }
+                    }
+                    ::std::result::Result::Ok(_) => {
                         if own {
                             let _ = store.rollback();
                         }
-                        return ::std::result::Result::Err(error);
+                        ::std::result::Result::Err(::lightshadedb::Error::DuplicateKey {
+                            table: ::std::string::String::from(#db_name),
+                        })
+                    }
+                    ::std::result::Result::Err(error) => {
+                        if own {
+                            let _ = store.rollback();
+                        }
+                        ::std::result::Result::Err(error)
                     }
                 }
-                if own { store.commit() } else { ::std::result::Result::Ok(()) }
             }
 
             fn upsert(store: &mut Db, row: Self) -> ::lightshadedb::Result<bool> {
