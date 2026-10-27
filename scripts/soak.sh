@@ -27,14 +27,14 @@ archive_logs() {
 }
 
 cleanup() {
-    for pid in "${CLIENTS[@]}"; do
+    for pid in ${CLIENTS[@]+"${CLIENTS[@]}"}; do
         kill "$pid" 2>/dev/null || true
     done
     if [[ -n "$SERVER_PID" ]]; then
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
-    for pid in "${CLIENTS[@]}"; do
+    for pid in ${CLIENTS[@]+"${CLIENTS[@]}"}; do
         wait "$pid" 2>/dev/null || true
     done
     if [[ "$KEEP" != "1" ]]; then
@@ -166,7 +166,7 @@ touch "$WORK/stop"
 
 for _ in $(seq 1 100); do
     alive=0
-    for pid in "${CLIENTS[@]}"; do
+    for pid in ${CLIENTS[@]+"${CLIENTS[@]}"}; do
         if kill -0 "$pid" 2>/dev/null; then
             alive=1
         fi
@@ -174,10 +174,10 @@ for _ in $(seq 1 100); do
     (( alive == 0 )) && break
     sleep 0.05
 done
-for pid in "${CLIENTS[@]}"; do
+for pid in ${CLIENTS[@]+"${CLIENTS[@]}"}; do
     kill "$pid" 2>/dev/null || true
 done
-for pid in "${CLIENTS[@]}"; do
+for pid in ${CLIENTS[@]+"${CLIENTS[@]}"}; do
     wait "$pid" 2>/dev/null || true
 done
 CLIENTS=()
