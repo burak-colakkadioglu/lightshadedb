@@ -33,7 +33,7 @@ jobs:
     name: bench (${{ matrix.os }}, ${{ matrix.engine }})
     needs: setup
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
